@@ -205,6 +205,23 @@ static void t6040_test_usb3_after_dp(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, ctx->pipe_calls, 1U);
 }
 
+static void t6040_test_hpd_low_keeps_dp_lanes(struct kunit *test)
+{
+	struct t6040_test *ctx = test->priv;
+
+	KUNIT_ASSERT_EQ(test, t6040_test_mux(ctx, TYPEC_DP_STATE_C, true), 0);
+	KUNIT_ASSERT_EQ(test, t6040_dp_power_on(&ctx->dp), 0);
+	KUNIT_ASSERT_EQ(test, t6040_test_mux(ctx, TYPEC_DP_STATE_C, false), 0);
+	KUNIT_ASSERT_EQ(test, t6040_dp_power_off(&ctx->dp), 0);
+	/* HPD is not the pin assignment. A sleeping sink still owns the lanes. */
+	KUNIT_EXPECT_TRUE(test, ctx->tphy.dp_assigned);
+	KUNIT_ASSERT_EQ(test, t6040_usb3_power_on(&ctx->usb3), 0);
+	KUNIT_EXPECT_EQ(test, ctx->usb_calls, 0U);
+	KUNIT_ASSERT_EQ(test, t6040_test_mux(ctx, TYPEC_STATE_USB, false), 0);
+	KUNIT_ASSERT_EQ(test, t6040_usb3_power_on(&ctx->usb3), 0);
+	KUNIT_EXPECT_EQ(test, ctx->usb_calls, 1U);
+}
+
 static void t6040_test_failed_init(struct kunit *test)
 {
 	struct t6040_test *ctx = test->priv;
@@ -259,6 +276,7 @@ static struct kunit_case t6040_test_cases[] = {
 	KUNIT_CASE(t6040_test_usb_stays_on_dummy),
 	KUNIT_CASE(t6040_test_disconnect_drains),
 	KUNIT_CASE(t6040_test_usb3_after_dp),
+	KUNIT_CASE(t6040_test_hpd_low_keeps_dp_lanes),
 	KUNIT_CASE(t6040_test_failed_init),
 	KUNIT_CASE(t6040_test_failed_stop_retains_owner),
 	KUNIT_CASE(t6040_test_idempotent_power),

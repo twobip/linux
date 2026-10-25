@@ -247,7 +247,8 @@ struct t6040_usb2_phy {
 	bool dp_ok;
 	bool dp_up;		/* DP consumer owns the common block */
 	bool dp_link_dirty;	/* link programming needs an off sequence */
-	bool dp_alt;		/* the Type-C port is in DP alt mode, pin assignment C/E */
+	bool dp_assigned;	/* C/E reserves all high-speed lanes, even at HPD-low */
+	bool dp_alt;		/* an HPD-high assignment may be claimed by DCP */
 	bool dp_flip;		/* plug orientation reversed for the DP lanes */
 	int dp_rate;		/* link rate index of the running link sequence, -1 = off */
 };
@@ -940,7 +941,7 @@ static int t6040_usb3_power_on(struct phy *phy)
 
 	guard(mutex)(&tphy->lock);
 	/* A four-lane DP assignment leaves the live USB controller on USB2. */
-	if (!tphy->usb3_ok || tphy->usb3_up || tphy->dp_alt || tphy->dp_up)
+	if (!tphy->usb3_ok || tphy->usb3_up || tphy->dp_assigned || tphy->dp_up)
 		return 0;
 	return t6040_usb3_start_locked(tphy);
 }
@@ -988,7 +989,7 @@ static int t6040_usb3_set_mode(struct phy *phy, enum phy_mode mode, int submode)
 		return -EOPNOTSUPP;
 
 	guard(mutex)(&tphy->lock);
-	if (tphy->dp_alt || tphy->dp_up || !tphy->usb3_up || tphy->pipe_switched)
+	if (tphy->dp_assigned || tphy->dp_up || !tphy->usb3_up || tphy->pipe_switched)
 		return 0;
 	t6040_usb3_pipe_switch(tphy);
 	tphy->pipe_switched = true;
@@ -1524,6 +1525,11 @@ static int t6040_dp_mux_update(struct t6040_usb2_phy *tphy,
 
 	guard(mutex)(&tphy->lock);
 	flip = tphy->orientation == TYPEC_ORIENTATION_REVERSE;
+	/* tipd must quiesce the USB role before changing its lane assignment. */
+	if (alt && tphy->usb3_up)
+		return -ETIMEDOUT;
+	if (alt)
+		tphy->dp_assigned = true;
 	/*
 	 * HPD-low is sent before tipd changes the role or assignment. Revoke
 	 * new DCP claims now, while the existing consumer drains its link.
@@ -1538,12 +1544,16 @@ static int t6040_dp_mux_update(struct t6040_usb2_phy *tphy,
 		tphy->dp_alt = false;
 		return -ETIMEDOUT;
 	}
-	if (dp && (!alt || !tphy->dp_ok || !tphy->usb3_ok))
+	if (dp && (!alt || !tphy->dp_ok || !tphy->usb3_ok)) {
+		tphy->dp_alt = false;
+		tphy->dp_assigned = alt;
 		return -ENODEV;
+	}
 	if (!dp && (state->alt || (state->mode != TYPEC_STATE_USB &&
-				  state->mode != TYPEC_STATE_SAFE)))
+				   state->mode != TYPEC_STATE_SAFE)))
 		return -ENODEV;
 
+	tphy->dp_assigned = alt;
 	tphy->dp_alt = alt;
 	tphy->dp_flip = flip;
 	return 0;
