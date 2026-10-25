@@ -1248,7 +1248,9 @@ static void parser_route_prepare_scope(struct kunit *test)
 	dcp->typec_follow_start = true;
 	dcp->typec_follow_gen = dcp->typec_generation;
 	mutex_init(&dcp->hpd_mutex);
+	mutex_init(&dcp->tb_lock);
 	KUNIT_EXPECT_EQ(test, dcp_typec_prepare_route(dcp), -ENODEV);
+	mutex_destroy(&dcp->tb_lock);
 	mutex_destroy(&dcp->hpd_mutex);
 	mutex_destroy(&dcp->modes_lock);
 }
