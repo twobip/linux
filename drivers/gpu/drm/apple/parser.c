@@ -1319,7 +1319,33 @@ static int parse_metadata_chromaticity(struct dcp_parse_ctx *handle,
 	return seen == 7 ? 0 : -EINVAL;
 }
 
-static int parse_metadata_product(struct dcp_parse_ctx *handle, struct dcp_display_metadata *out)
+/* Internal panel labels can be longer than an EDID descriptor. */
+static int parse_panel_label(struct dcp_parse_ctx *handle, char out[14])
+{
+	const struct dcp_parse_tag *tag = parse_tag_of_type(handle, DCP_TYPE_STRING);
+	const u8 *value;
+	unsigned int length;
+
+	if (IS_ERR(tag))
+		return PTR_ERR(tag);
+	if (!tag->size || tag->size > 255)
+		return -EINVAL;
+	value = parse_bytes(handle, tag->size);
+	if (IS_ERR(value))
+		return PTR_ERR(value);
+	for (unsigned int i = 0; i < tag->size; i++)
+		if (value[i] < 0x20 || value[i] > 0x7e)
+			return -EINVAL;
+	length = tag->size;
+	if (length > 13)
+		length = 13;
+	memcpy(out, value, length);
+	out[length] = 0;
+	return 0;
+}
+
+static int parse_metadata_product(struct dcp_parse_ctx *handle,
+				  struct dcp_display_metadata *out, bool panel)
 {
 	struct iterator it;
 	unsigned int seen = 0;
@@ -1344,7 +1370,8 @@ static int parse_metadata_product(struct dcp_parse_ctx *handle, struct dcp_displ
 			if (seen & 2)
 				return -EINVAL;
 			seen |= 2;
-			ret = parse_metadata_string(handle, out->name, sizeof(out->name));
+			ret = panel ? parse_panel_label(handle, out->name) :
+				parse_metadata_string(handle, out->name, sizeof(out->name));
 		} else if (!strcmp(key, "ProductID")) {
 			if (seen & 4)
 				return -EINVAL;
@@ -1369,8 +1396,9 @@ static int parse_metadata_product(struct dcp_parse_ctx *handle, struct dcp_displ
 			if (seen & 128)
 				return -EINVAL;
 			seen |= 128;
-			ret = parse_metadata_string(handle, out->serial_text,
-						    sizeof(out->serial_text));
+			ret = panel ? parse_panel_label(handle, out->serial_text) :
+				parse_metadata_string(handle, out->serial_text,
+						      sizeof(out->serial_text));
 		} else if (!strcmp(key, "LegacyManufacturerID")) {
 			if (seen & 32)
 				return -EINVAL;
@@ -1382,7 +1410,8 @@ static int parse_metadata_product(struct dcp_parse_ctx *handle, struct dcp_displ
 		if (ret)
 			return ret;
 	}
-	if ((seen & 31) != 31 || strlen(out->manufacturer) != 3)
+	if ((seen & (panel ? 7 : 31)) != (panel ? 7 : 31) ||
+	    strlen(out->manufacturer) != 3)
 		return -EINVAL;
 	for (unsigned int i = 0; i < 3; i++)
 		if (out->manufacturer[i] < 'A' || out->manufacturer[i] > 'Z')
@@ -1433,7 +1462,7 @@ int parse_display_metadata(struct dcp_parse_ctx *handle, struct dcp_display_meta
 			if (seen & 16)
 				return -EINVAL;
 			seen |= 16;
-			ret = parse_metadata_product(handle, &parsed);
+			ret = parse_metadata_product(handle, &parsed, false);
 		} else {
 			ret = skip(handle);
 		}
@@ -1442,6 +1471,39 @@ int parse_display_metadata(struct dcp_parse_ctx *handle, struct dcp_display_meta
 	}
 	if (seen != 31)
 		return -EINVAL;
+	*out = parsed;
+	return 0;
+}
+
+/* Identity does not depend on optional colorimetry or EDID-compatible timing. */
+int parse_panel_metadata(struct dcp_parse_ctx *handle, struct dcp_display_metadata *out)
+{
+	struct dcp_display_metadata parsed = {};
+	struct iterator it;
+	bool product = false;
+	int ret = iterator_begin(handle, &it, true);
+
+	if (ret)
+		return ret;
+	for (; it.idx < it.len; it.idx++) {
+		char key[64];
+
+		ret = parse_metadata_string(handle, key, sizeof(key));
+		if (ret)
+			return ret;
+		if (!strcmp(key, "ProductAttributes")) {
+			if (product)
+				return -EINVAL;
+			product = true;
+			ret = parse_metadata_product(handle, &parsed, true);
+		} else {
+			ret = skip(handle);
+		}
+		if (ret)
+			return ret;
+	}
+	if (!product)
+		return -ENODATA;
 	*out = parsed;
 	return 0;
 }

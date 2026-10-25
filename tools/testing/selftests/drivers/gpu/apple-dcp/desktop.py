@@ -357,3 +357,67 @@ static void dcp_modeset_fixed_fallback(struct apple_dcp *d,struct dcp_modeset_co
     assert(!d.crashed && !d.command.depth && !d.channel.depth);
 '''
     return unit.replace('    return 0;\n}', tests + '    return 0;\n}')
+
+
+def panel_identity(root):
+    import struct
+    import rate
+    f = rate.parser_fixture(root)
+    attributes = {'MaxHorizontalImageSize': 0, 'MaxVerticalImageSize': 0,
+                  'ProductAttributes': {'ManufacturerID': 'TST', 'ProductID': 42,
+                                        'ProductName': 'Synthetic Internal Panel',
+                                        'SerialNumber': 0x12345678}}
+    raw = bytearray(struct.pack('<I', 0xd3)); f['wire'](attributes, raw)
+    code = (f['prefix'] + f['metadata'] + f['epoch'].replace('static inline ', 'static inline __attribute__((unused)) ') + f['header'] +
+            f['edid_header'] + f['parser'] + f['stubs'] + f['builder'])
+    source = (root / 'drivers/gpu/drm/apple/dcp.c').read_text()
+    helpers = '\n'.join(block(source, name) for name in (
+        'void dcp_panel_metadata_replace(', 'bool dcp_panel_metadata_current(',
+        'const struct drm_edid *dcp_panel_edid_snapshot('))
+    return code + r'''
+#define DCP_FIRMWARE_V_26_6_DESKTOP 5
+#define spin_lock_irqsave(p,f) do {assert(!*(p));*(p)=true;(f)=0;} while(0)
+#define spin_unlock_irqrestore(p,f) do {assert(*(p));*(p)=false;(void)(f);} while(0)
+struct apple_dcp {
+    int fw_compat;bool has_panel;struct {bool lock;} metadata;
+    struct {struct dcp_display_metadata panel_metadata;u64 panel_metadata_generation;bool panel_metadata_valid;} *desktop;
+    struct {u32 width_mm,height_mm;} panel;void *connector;
+};
+static unsigned notifications;
+static bool dcp_has_panel(struct apple_dcp *d) {return d->has_panel;}
+static void dcp_queue_hotplug(void *con) {assert(con);notifications++;}
+''' + helpers + '\nstatic const u8 attributes[]={'+','.join(map(str,raw))+'};\n' + r'''
+int main(void)
+{
+    struct dcp_parse_ctx ctx;
+    struct dcp_display_metadata metadata;
+    assert(!parse(attributes,sizeof(attributes),&ctx));
+    assert(!parse_panel_metadata(&ctx,&metadata));
+    assert(!strcmp(metadata.manufacturer,"TST") && metadata.product==42 && metadata.serial==0x12345678);
+    assert(!strcmp(metadata.name,"Synthetic Int"));
+    /* No color fields, date or EDID-representable timing is required. */
+    struct apple_dcp d={.fw_compat=5,.has_panel=true,.panel={345,223},.connector=&d};
+    __typeof__(*d.desktop) desktop={0};d.desktop=&desktop;
+    u64 generation=99;
+    assert(IS_ERR(dcp_panel_edid_snapshot(&d,&generation)));
+    dcp_panel_metadata_replace(&d,&metadata);
+    assert(notifications==1 && desktop.panel_metadata_valid);
+    const struct drm_edid *edid=dcp_panel_edid_snapshot(&d,&generation);
+    assert(!IS_ERR(edid) && drm_edid_valid(edid) && dcp_panel_metadata_current(&d,generation));
+    const u8 *bytes=(const void *)&edid->raw;
+    assert(bytes[8]==0x52 && bytes[9]==0x74 && bytes[10]==42 && !bytes[11]);
+    assert(bytes[12]==0x78 && bytes[13]==0x56 && bytes[14]==0x34 && bytes[15]==0x12);
+    assert(bytes[18]==1 && bytes[19]==3 && bytes[21]==35 && bytes[22]==22 && bytes[23]==0xff);
+    assert(bytes[54+3]==EDID_DETAIL_MONITOR_NAME && bytes[72+3]==EDID_DETAIL_MONITOR_SERIAL);
+    assert(!memcmp(bytes+72+5,"12345678\n",9));
+    drm_edid_free(edid);
+    dcp_panel_metadata_replace(&d,NULL);
+    assert(!dcp_panel_metadata_current(&d,generation));
+    assert(IS_ERR(dcp_panel_edid_snapshot(&d,&generation)));
+    /* Another firmware/profile cannot publish a desktop panel identity. */
+    d.fw_compat=2;dcp_panel_metadata_replace(&d,&metadata);
+    assert(!desktop.panel_metadata_valid);
+    metadata.manufacturer[0]='?';assert(IS_ERR(dcp_panel_edid(&metadata,345,223)));
+    return 0;
+}
+'''

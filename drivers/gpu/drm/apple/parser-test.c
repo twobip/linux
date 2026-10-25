@@ -3,6 +3,7 @@
 #include <linux/slab.h>
 #include <linux/platform_device.h>
 #include <drm/drm_kunit_helpers.h>
+#include <drm/drm_edid.h>
 #include <drm/drm_atomic_state_helper.h>
 
 #include "dcp.h"
@@ -1308,7 +1309,41 @@ static void parser_route_prepare_scope(struct kunit *test)
 	mutex_destroy(&dcp->modes_lock);
 }
 
+static void parser_panel_identity(struct kunit *test)
+{
+	struct parser_blob *blob = kunit_kzalloc(test, sizeof(*blob), GFP_KERNEL);
+	struct dcp_display_metadata metadata;
+	struct dcp_parse_ctx ctx;
+	const struct drm_edid *edid;
+	const struct edid *raw;
+
+	KUNIT_ASSERT_NOT_NULL(test, blob);
+	put_unaligned_le32(0xd3, blob->data);
+	blob->size = 4;
+	blob_tag(blob, 1, 1);
+	blob_key(blob, "ProductAttributes");
+	blob_tag(blob, 1, 4);
+	blob_key(blob, "ManufacturerID");
+	blob_key(blob, "TST");
+	blob_key(blob, "ProductName");
+	blob_key(blob, "Synthetic Internal Panel");
+	blob_int(blob, "ProductID", 42);
+	blob_int(blob, "SerialNumber", 0x12345678);
+	KUNIT_ASSERT_EQ(test, parse(blob->data, blob->size, &ctx), 0);
+	KUNIT_ASSERT_EQ(test, parse_panel_metadata(&ctx, &metadata), 0);
+	KUNIT_EXPECT_STREQ(test, metadata.name, "Synthetic Int");
+	edid = dcp_panel_edid(&metadata, 345, 223);
+	KUNIT_ASSERT_FALSE(test, IS_ERR(edid));
+	KUNIT_EXPECT_TRUE(test, drm_edid_valid(edid));
+	raw = drm_edid_raw(edid);
+	KUNIT_EXPECT_EQ(test, le16_to_cpu(raw->product_id.product_code), 42);
+	KUNIT_EXPECT_EQ(test, le32_to_cpu(raw->product_id.serial_number), 0x12345678U);
+	KUNIT_EXPECT_EQ(test, raw->gamma, 0xff);
+	drm_edid_free(edid);
+}
+
 static struct kunit_case parser_cases[] = {
+	KUNIT_CASE(parser_panel_identity),
 	KUNIT_CASE(parser_score_presence),
 	KUNIT_CASE(parser_legacy_ties),
 	KUNIT_CASE(parser_color_presence),

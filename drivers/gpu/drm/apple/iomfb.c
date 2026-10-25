@@ -1944,8 +1944,11 @@ int dcp_get_modes(struct drm_connector *connector)
 		}
 	} else {
 		u64 generation = 0;
+		bool panel = dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP &&
+			     dcp_has_panel(dcp);
 		const struct drm_edid *derived = nr_modes ?
-			dcp_firmware_edid(dcp, &generation) : ERR_PTR(-ENODATA);
+			(panel ? dcp_panel_edid_snapshot(dcp, &generation) :
+			 dcp_firmware_edid(dcp, &generation)) : ERR_PTR(-ENODATA);
 
 		if (!IS_ERR(derived)) {
 			bool log = !apple_connector->drm_edid_firmware_derived ||
@@ -1956,7 +1959,8 @@ int dcp_get_modes(struct drm_connector *connector)
 			apple_connector->drm_edid_generation = generation;
 			update = drm_edid_connector_update(connector, derived);
 			drm_edid_free(derived);
-			if (update || !dcp_firmware_metadata_current(dcp, generation)) {
+			if (update || !(panel ? dcp_panel_metadata_current(dcp, generation) :
+				       dcp_firmware_metadata_current(dcp, generation))) {
 				drm_edid_connector_update(connector, NULL);
 				apple_connector->drm_edid_firmware_derived = false;
 			} else if (log) {

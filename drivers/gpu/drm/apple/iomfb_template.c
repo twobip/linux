@@ -1320,6 +1320,12 @@ static bool dcpep_process_chunks(struct apple_dcp *dcp,
 
 			ret = parse_display_metadata(&metadata_ctx, &metadata);
 			dcp_firmware_metadata_attributes(dcp, ret ? NULL : &metadata);
+		} else if (dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP &&
+			   dcp_has_panel(dcp)) {
+			struct dcp_display_metadata metadata;
+
+			ret = parse_panel_metadata(&metadata_ctx, &metadata);
+			dcp_panel_metadata_replace(dcp, ret ? NULL : &metadata);
 		}
 	}
 

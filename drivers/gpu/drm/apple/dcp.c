@@ -776,6 +776,60 @@ const struct drm_edid *dcp_firmware_edid(struct apple_dcp *dcp, u64 *generation)
 	return edid;
 }
 
+/* Internal panel identity has no detachable Type-C service or EDID transport. */
+void dcp_panel_metadata_replace(struct apple_dcp *dcp,
+				const struct dcp_display_metadata *metadata)
+{
+	unsigned long flags;
+
+	if (dcp->fw_compat != DCP_FIRMWARE_V_26_6_DESKTOP || !dcp_has_panel(dcp))
+		return;
+	spin_lock_irqsave(&dcp->metadata.lock, flags);
+	dcp->desktop->panel_metadata_generation++;
+	dcp->desktop->panel_metadata_valid = !!metadata;
+	if (metadata)
+		dcp->desktop->panel_metadata = *metadata;
+	spin_unlock_irqrestore(&dcp->metadata.lock, flags);
+	if (dcp->connector)
+		dcp_queue_hotplug(dcp->connector);
+}
+
+bool dcp_panel_metadata_current(struct apple_dcp *dcp, u64 generation)
+{
+	unsigned long flags;
+	bool valid;
+
+	spin_lock_irqsave(&dcp->metadata.lock, flags);
+	valid = dcp->desktop->panel_metadata_valid &&
+		generation == dcp->desktop->panel_metadata_generation;
+	spin_unlock_irqrestore(&dcp->metadata.lock, flags);
+	return valid;
+}
+
+const struct drm_edid *dcp_panel_edid_snapshot(struct apple_dcp *dcp, u64 *generation)
+{
+	struct dcp_display_metadata metadata;
+	const struct drm_edid *edid;
+	unsigned long flags;
+	bool valid;
+
+	spin_lock_irqsave(&dcp->metadata.lock, flags);
+	valid = dcp->desktop->panel_metadata_valid;
+	if (valid) {
+		metadata = dcp->desktop->panel_metadata;
+		*generation = dcp->desktop->panel_metadata_generation;
+	}
+	spin_unlock_irqrestore(&dcp->metadata.lock, flags);
+	if (!valid)
+		return ERR_PTR(-ENODATA);
+	edid = dcp_panel_edid(&metadata, dcp->panel.width_mm, dcp->panel.height_mm);
+	if (!IS_ERR(edid) && !dcp_panel_metadata_current(dcp, *generation)) {
+		drm_edid_free(edid);
+		return ERR_PTR(-ESTALE);
+	}
+	return edid;
+}
+
 void dcp_set_dimensions(struct apple_dcp *dcp, u64 generation)
 {
 	struct apple_connector *apple_connector = READ_ONCE(dcp->connector);

@@ -60,6 +60,7 @@ def main():
         ('display', 'panel-brightness-commit', display.brightness_commit, ((),), ()),
         ('display', 'panel-brightness-takeover', display.takeover, ((),), ()),
         ('display', 'panel-mode-catalog', display.modes, ((),), ()),
+        ('display', 'desktop-panel-identity', desktop.panel_identity, ((),), ()),
         ('display', 'panel-refresh-range', display.refresh, ((),), ()),
         ('display', 'panel-adaptive-fallback', display.adaptive, ((),), ()),
         ('display', 'panel-adaptive-watchdog', display.watchdog, ((),), ()),

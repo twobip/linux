@@ -638,6 +638,10 @@ static int drm_edid_connector_update(struct drm_connector *c,const struct drm_ed
 }
 static const struct drm_edid *dcp_firmware_edid(struct apple_dcp *d,u64 *generation) { (void)d; (void)generation; return ERR_PTR(-ENODATA); }
 static bool dcp_firmware_metadata_current(struct apple_dcp *d,u64 generation) { (void)d; (void)generation; return false; }
+static const struct drm_edid *dcp_panel_edid_snapshot(struct apple_dcp *d,u64 *generation) { (void)d;(void)generation;assert(!"panel identity in external fixture");return ERR_PTR(-ENODATA); }
+static bool dcp_panel_metadata_current(struct apple_dcp *d,u64 generation) { (void)d;(void)generation;assert(!"panel identity in external fixture");return false; }
+static void dcp_panel_metadata_replace(struct apple_dcp *d,const struct dcp_display_metadata *m) { (void)d;(void)m;assert(!"panel identity in external receipt"); }
+
 static struct drm_display_mode *drm_mode_duplicate(struct drm_device *dev,const struct drm_display_mode *m) {
     assert(dev->mode_config.mutex);struct drm_display_mode *copy=malloc(sizeof(*copy));assert(copy);*copy=*m;
     if(invalidate_during_duplicate) { invalidate_during_duplicate=false;dcp_180hz_invalidate(probing); }

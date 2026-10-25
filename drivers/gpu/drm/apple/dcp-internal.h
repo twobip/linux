@@ -243,6 +243,10 @@ struct dcp_desktop_state {
 	 * element before the real one is selected.
 	 */
 	bool mode_live;
+	/* Identity supplied by this fixed panel, independent of optional color data. */
+	struct dcp_display_metadata panel_metadata;
+	u64 panel_metadata_generation;
+	bool panel_metadata_valid;
 	/* RX records an unsupported callback until the modeset RPC has drained. */
 	bool modeset_active;
 	bool modeset_callback_error;
@@ -301,6 +305,10 @@ struct dcpext_scanout;
 struct dcp_hdmi;
 
 bool dcp_desktop_present_complete(struct apple_dcp *dcp, u32 id);
+void dcp_panel_metadata_replace(struct apple_dcp *dcp,
+				const struct dcp_display_metadata *metadata);
+const struct drm_edid *dcp_panel_edid_snapshot(struct apple_dcp *dcp, u64 *generation);
+bool dcp_panel_metadata_current(struct apple_dcp *dcp, u64 generation);
 bool dcp_desktop_vrr_supported(struct apple_dcp *dcp);
 int dcp_desktop_vrr_check(struct apple_dcp *dcp, struct drm_crtc_state *state);
 

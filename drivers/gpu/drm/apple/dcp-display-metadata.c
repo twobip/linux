@@ -202,3 +202,61 @@ const struct drm_edid *dcp_metadata_edid(const struct dcp_display_metadata *meta
 	}
 	return edid;
 }
+
+/*
+ * Internal modes come from TimingElements. Supply identity without inventing
+ * an EDID timing, chromaticities or gamma when the panel omits those fields.
+ */
+const struct drm_edid *dcp_panel_edid(const struct dcp_display_metadata *metadata,
+				     u32 width_mm, u32 height_mm)
+{
+	struct edid block = {};
+	const struct drm_edid *edid;
+	char serial[14];
+	u16 manufacturer = 0;
+	u8 sum = 0;
+	int ret;
+
+	if (strnlen(metadata->manufacturer, 4) != 3 || metadata->product > U16_MAX ||
+	    !width_mm || width_mm > 2550 || !height_mm || height_mm > 2550)
+		return ERR_PTR(-EINVAL);
+	for (unsigned int i = 0; i < 3; i++) {
+		if (metadata->manufacturer[i] < 'A' || metadata->manufacturer[i] > 'Z')
+			return ERR_PTR(-EINVAL);
+		manufacturer = manufacturer << 5 | (metadata->manufacturer[i] - '@');
+	}
+	memcpy(block.header, "\x00\xff\xff\xff\xff\xff\xff\x00", 8);
+	block.product_id.manufacturer_name = cpu_to_be16(manufacturer);
+	block.product_id.product_code = cpu_to_le16(metadata->product);
+	block.product_id.serial_number = cpu_to_le32(metadata->serial);
+	block.version = 1;
+	block.revision = 3;
+	block.input = DRM_EDID_INPUT_DIGITAL;
+	block.width_cm = DIV_ROUND_CLOSEST(width_mm, 10);
+	block.height_cm = DIV_ROUND_CLOSEST(height_mm, 10);
+	block.gamma = 0xff; /* Unspecified. */
+	memset(block.standard_timings, 1, sizeof(block.standard_timings));
+	for (unsigned int i = 0; i < ARRAY_SIZE(block.detailed_timings); i++)
+		block.detailed_timings[i].data.other_data.type = 0x10 /* Dummy descriptor. */;
+	ret = dcp_metadata_text(&block.detailed_timings[0], EDID_DETAIL_MONITOR_NAME,
+				metadata->name);
+	if (ret)
+		return ERR_PTR(ret);
+	/* A zero numeric serial is a valid unspecified EDID serial, not NULL. */
+	snprintf(serial, sizeof(serial), "%08x", metadata->serial);
+	ret = dcp_metadata_text(&block.detailed_timings[1], EDID_DETAIL_MONITOR_SERIAL,
+				metadata->serial_text[0] ? metadata->serial_text : serial);
+	if (ret)
+		return ERR_PTR(ret);
+	for (unsigned int i = 0; i < sizeof(block) - 1; i++)
+		sum += ((const u8 *)&block)[i];
+	block.checksum = -sum;
+	edid = drm_edid_alloc(&block, sizeof(block));
+	if (!edid)
+		return ERR_PTR(-ENOMEM);
+	if (!drm_edid_valid(edid)) {
+		drm_edid_free(edid);
+		return ERR_PTR(-EINVAL);
+	}
+	return edid;
+}
