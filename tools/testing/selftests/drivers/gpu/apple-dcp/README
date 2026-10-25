@@ -163,6 +163,7 @@ Internal panel policy
 ---------------------
 The display group covers the shared nits ramp on a 600-nit panel, retargeting,
 blanking, suspend, rejected submits and both submit/completion callback orders.
+Brightness-only commits retain the active gamma state without marking it changed.
 Synthetic TimingElements exercise 120 Hz and fractional lower refresh rates,
 DCP color/timing identities, invalid geometry and adaptive-sync ranges. The
 adaptive-sync callback test verifies the desktop parameter record, mode-info

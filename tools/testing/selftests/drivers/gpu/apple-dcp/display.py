@@ -415,3 +415,60 @@ int main(void) {
     return 0;
 }
 '''
+
+
+def brightness_commit(root):
+    source=(root/'drivers/gpu/drm/apple/dcp_backlight.c').read_text()
+    production=block(source,'static int drm_crtc_set_brightness(')
+    return r'''
+#include <assert.h>
+#include <stdbool.h>
+#include <stdlib.h>
+#include <errno.h>
+#define DRM_MODESET_ACQUIRE_INTERRUPTIBLE 0
+#define IS_ERR(p) false
+#define PTR_ERR(p) (-EINVAL)
+struct drm_crtc_state {bool active,color_mgmt_changed,planes_changed;void *gamma_lut;};
+struct drm_crtc {void *dev;int mutex;};
+struct drm_modeset_acquire_ctx {int unused;};
+struct drm_atomic_commit {struct drm_modeset_acquire_ctx *acquire_ctx;};
+struct apple_dcp {bool desktop,pending;struct {bool update;} brightness;struct {struct drm_crtc base;} *crtc;};
+static struct drm_atomic_commit commit;
+static struct drm_crtc_state state;
+static unsigned allocations,commits,planes;
+static bool fail_alloc;
+static bool dcp_backlight_desktop(struct apple_dcp *d) {return d->desktop;}
+static bool dcp_backlight_pending(struct apple_dcp *d) {return d->pending;}
+static struct drm_atomic_commit *drm_atomic_commit_alloc(void *dev)
+{allocations++;return fail_alloc?NULL:&commit;}
+static void drm_modeset_acquire_init(struct drm_modeset_acquire_ctx *c,int flags) {}
+static int drm_modeset_lock(int *m,struct drm_modeset_acquire_ctx *c) {assert(!*m);*m=1;return 0;}
+static struct drm_crtc_state *drm_atomic_get_crtc_state(struct drm_atomic_commit *a,struct drm_crtc *c)
+{assert(c->mutex);return &state;}
+static int drm_atomic_add_affected_planes(struct drm_atomic_commit *a,struct drm_crtc *c)
+{assert(c->mutex);planes++;return 0;}
+static int drm_atomic_commit(struct drm_atomic_commit *a) {commits++;return 0;}
+static void drm_atomic_commit_clear(struct drm_atomic_commit *a) {assert(false);}
+static int drm_modeset_backoff(struct drm_modeset_acquire_ctx *c) {assert(false);return 0;}
+static void drm_atomic_commit_put(struct drm_atomic_commit *a) {}
+static void drm_modeset_drop_locks(struct drm_modeset_acquire_ctx *c) {}
+static void drm_modeset_acquire_fini(struct drm_modeset_acquire_ctx *c) {}
+''' + production + r'''
+int main(void) {
+    struct apple_dcp d={.desktop=true,.pending=true,.brightness={true}};
+    __typeof__(*d.crtc) crtc={0};d.crtc=&crtc;
+    state.active=true;state.gamma_lut=&d;
+    assert(!drm_crtc_set_brightness(&d));
+    assert(commits==1 && planes==1 && state.planes_changed && !state.color_mgmt_changed);
+    crtc.base.mutex=0;state=(struct drm_crtc_state){.active=true};d.desktop=false;
+    assert(!drm_crtc_set_brightness(&d));
+    assert(commits==2 && planes==2 && state.color_mgmt_changed);
+    crtc.base.mutex=0;state=(struct drm_crtc_state){.active=false};d.desktop=true;
+    assert(!drm_crtc_set_brightness(&d) && commits==2);
+    crtc.base.mutex=0;state.active=true;d.pending=false;
+    assert(!drm_crtc_set_brightness(&d) && commits==2);
+    fail_alloc=true;assert(drm_crtc_set_brightness(&d)==-ENOMEM && commits==2);
+    assert(allocations==5);
+    return 0;
+}
+'''
