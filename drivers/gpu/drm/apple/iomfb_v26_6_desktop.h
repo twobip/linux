@@ -49,4 +49,13 @@ struct dcp_set_frame_sync_props_resp_v26_6_desktop {
 	u8 props[0x50];
 } __packed;
 
+/* D202 releases a PIODMA mapping and has no output payload. */
+struct dcp_unmap_buf_req_v26_6_desktop {
+	u64 buffer;
+	u64 vaddr;
+	u64 dva;
+} __packed;
+
+bool iomfb_check_callback_v26_6_desktop(int tag, u32 in_len, u32 out_len);
+
 #endif /* __APPLE_IOMFB_V26_6_DESKTOP_H__ */

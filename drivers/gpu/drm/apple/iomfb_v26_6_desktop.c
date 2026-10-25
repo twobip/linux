@@ -52,6 +52,29 @@ static const struct dcp_method_entry dcp_methods[dcpep_num_methods] = {
 
 #include "iomfb_template.c"
 
+bool iomfb_check_callback_v26_6_desktop(int tag, u32 in_len, u32 out_len)
+{
+	return tag != 202 ||
+		(in_len == sizeof(struct dcp_unmap_buf_req_v26_6_desktop) && !out_len);
+}
+
+static bool trampoline_unmap_piodma_v26_6(struct apple_dcp *dcp, int tag,
+					  void *out, void *in)
+{
+	const struct dcp_unmap_buf_req_v26_6_desktop *wire = in;
+	struct dcp_unmap_buf_resp request = {
+		.buffer = get_unaligned_le64(&wire->buffer),
+		.vaddr = get_unaligned_le64(&wire->vaddr),
+		.dva = get_unaligned_le64(&wire->dva),
+	};
+
+	static_assert(sizeof(*wire) == 24);
+	trace_iomfb_callback(dcp, tag, __func__);
+	dcpep_unmap_piodma(dcp, &request);
+	/* The transport sends the empty callback acknowledgment. */
+	return true;
+}
+
 struct dcp_dict_passthrough_req_v26_6 {
 	u8 key[0x40];
 	u8 value[0x1000];
@@ -120,6 +143,7 @@ static const iomfb_cb_handler cb_handlers[IOMFB_MAX_CB] = {
 	[129] = trampoline_prop_end,
 	[134] = trampoline_zero,
 	[201] = trampoline_map_piodma,
+	[202] = trampoline_unmap_piodma_v26_6,
 	[206] = iomfbep_cb_match_pmu_service_2,
 	[207] = iomfbep_cb_match_backlight_service,
 	[208] = trampoline_nop, /* update_backlight_factor_prop */

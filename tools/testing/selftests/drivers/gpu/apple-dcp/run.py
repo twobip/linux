@@ -26,6 +26,7 @@ import quiesce
 import transaction
 import accounting
 import idle
+import desktop
 import rate
 import boot
 import m4
@@ -51,6 +52,7 @@ def main():
                                        'orientation-faults', 'backend-change', 'safe-first',
                                        'failed-flip-return', 'live-park'))
     tests = [
+        ('lifecycle', 'desktop-modeset-unmap', desktop.modeset_unmap, ((),), ()),
         ('m4', 'm4-wire-golden', lambda r: m4.golden_check(r, output), (), ()),
         ('m4', 'm4-protocol', m4.protocol, ((),), ('-Wno-unused-function', '-Wno-unused-const-variable')),
         ('m4', 'm4-common-plane', m4.plane, ((),), ('-Wno-unused-function', '-Wno-unused-const-variable')),

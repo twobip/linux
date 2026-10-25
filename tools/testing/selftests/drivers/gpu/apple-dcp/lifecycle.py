@@ -1838,6 +1838,7 @@ typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
 #define DCP_FIRMWARE_H17P 1
+#define DCP_FIRMWARE_V_26_6_DESKTOP 5
 #define DCP_IOMFB_METHODS_H17P_EXTERNAL 2
 #define DCP_IOMFB_METHODS_H17G 3
 #define DCP_MAX_CALL_DEPTH 8
@@ -1919,4 +1920,8 @@ int main(void)
 }
 """
 
-    return prefix + source[start:end] + suffix
+    desktop = (root / "drivers/gpu/drm/apple/iomfb_v26_6_desktop.c").read_text()
+    header = (root / "drivers/gpu/drm/apple/iomfb_v26_6_desktop.h").read_text()
+    checker = (block(header, 'struct dcp_unmap_buf_req_v26_6_desktop {') + ';\n' +
+               block(desktop, 'bool iomfb_check_callback_v26_6_desktop('))
+    return prefix + checker + source[start:end] + suffix

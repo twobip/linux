@@ -158,3 +158,9 @@ surviving an unrelated failed AGX request, both reply/timeout lock orderings,
 malformed replies, true owner failure, an unowned or invalid fault SID, probe
 rollback versus published DMA lifetime, exactly-once DRM event ownership, and
 mixed-owner, truncated, failed-translation and invalid-owner IOMMU tuples.
+
+The desktop-modeset-unmap case sends the desktop D202 PIODMA release through
+the actual callback table binding and dispatcher while A413 is pending. It
+checks the empty callback ACK, outer modeset completion, mapping reuse, and
+rejection of duplicate releases, invalid descriptors and mismatched addresses.
+The 24-byte input and zero-byte output are checked before decoding.

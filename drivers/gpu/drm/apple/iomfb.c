@@ -1286,6 +1286,14 @@ static void dcpep_handle_cb(struct apple_dcp *dcp, enum dcp_context_id context,
 
 	tag = dcp_parse_tag(hdr->tag);
 
+	if (dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP &&
+	    (!iomfb_check_callback_v26_6_desktop(tag, hdr->in_len, hdr->out_len) ||
+	     (tag == 202 && (u64)sizeof(*hdr) + hdr->in_len + hdr->out_len != length))) {
+		dev_err(dev, "invalid desktop IOMFB callback %d (%u, %u)\n",
+			tag, hdr->in_len, hdr->out_len);
+		dcp->crashed = true;
+		return;
+	}
 
 	handled = tag >= 0 && tag < IOMFB_MAX_CB && dcp->cb_handlers &&
 		  dcp->cb_handlers[tag];
