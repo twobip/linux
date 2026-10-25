@@ -197,6 +197,7 @@ int main(void) {
 def adaptive(root):
     source=(root/'drivers/gpu/drm/apple/iomfb_template.c').read_text()
     funcs='\n'.join(block(source, marker) for marker in (
+        'static bool dcp_modeset_callback_failed(',
         'static void dcp_modeset_fixed_fallback(',
         'static void dcp_modeset_actual_done(',
         'static void dcp_modeset_after_actual_info(',
@@ -224,7 +225,7 @@ typedef uint64_t u64;
 struct dcp_wait_cookie { u32 status; bool done,replied; };
 struct dcp_set_digital_out_mode_req {u32 color_mode_id,timing_mode_id;};
 struct dcp_set_parameter_dcp { u32 param; u64 value[4]; u32 count; };
-struct apple_dcp {void *dev;int fw_compat;bool main_display,panel;struct {bool vrr_failed;} *desktop;};
+struct apple_dcp {void *dev;int fw_compat;bool main_display,panel;struct {bool vrr_failed,modeset_callback_error;} *desktop;};
 static bool t6041_vrr;
 struct drm_display_mode {int id;};
 struct drm_crtc_state {bool vrr_enabled;struct drm_display_mode mode;};
@@ -298,6 +299,18 @@ int main(void)
     dcp_modeset_sync(&d,&m);reply(&d,1,&zero);
     assert(requested.color_mode_id==13 && requested.timing_mode_id==12);
     reply(&d,2,&zero);reply(&d,3,&zero);selected(&d,&m);
+    /* Unsupported callbacks at every chained RPC stop after its real ACK. */
+    for(unsigned phase=0;phase<5;phase++) {
+        desktop.vrr_failed=false;desktop.modeset_callback_error=false;
+        initialize(&m);m.use_bootstrap=true;dcp_modeset_sync(&d,&m);
+        if(phase>0)reply(&d,1,&zero);
+        if(phase>1)reply(&d,2,&zero);
+        if(phase>2)reply(&d,3,&zero);
+        if(phase>3)reply(&d,2,&zero);
+        desktop.modeset_callback_error=true;
+        reply(&d,kind,&zero);
+        assert(m.wait.done && !m.wait.replied && !pending && !desktop.vrr_failed);
+    }
     assert(parameters && infos && modes);
     return 0;
 }

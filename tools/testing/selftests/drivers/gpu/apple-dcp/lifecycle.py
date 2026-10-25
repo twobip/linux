@@ -1840,7 +1840,10 @@ typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
+#define READ_ONCE(x) (x)
+#define WRITE_ONCE(x,v) ((x)=(v))
 #define DCP_FIRMWARE_H17P 1
+#define DCP_FIRMWARE_V_26_6_DESKTOP 5
 #define DCP_IOMFB_METHODS_H17P_EXTERNAL 2
 #define DCP_IOMFB_METHODS_H17G 3
 #define DCP_MAX_CALL_DEPTH 8
@@ -1863,6 +1866,7 @@ struct apple_dcp {
     bool (**cb_handlers)(struct apple_dcp *, int, void *, void *);
     unsigned long unknown_callbacks[16];
     int start_done;
+    struct {bool modeset_active,modeset_callback_error;} *desktop;
     struct dcp_channel channel;
 };
 static bool machine;
@@ -1922,4 +1926,6 @@ int main(void)
 }
 """
 
-    return prefix + source[start:end] + suffix
+    desktop = (root / "drivers/gpu/drm/apple/iomfb_v26_6_desktop.c").read_text()
+    checker = block(desktop, 'bool iomfb_check_callback_v26_6_desktop(')
+    return prefix + checker + source[start:end] + suffix

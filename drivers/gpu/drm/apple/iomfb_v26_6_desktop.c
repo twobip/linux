@@ -91,6 +91,24 @@ static bool trampoline_passthrough_dict_v26_6(struct apple_dcp *dcp, int tag,
 	return true;
 }
 
+bool iomfb_check_callback_v26_6_desktop(int tag, u32 in_len, u32 out_len)
+{
+	switch (tag) {
+	case 201:
+		return in_len == 12 && out_len == 16;
+	case 202:
+		return in_len == 24 && !out_len;
+	case 451:
+		return in_len == 20 && out_len == 28;
+	case 452:
+		return in_len == 24 && out_len == 20;
+	case 454:
+		return in_len == 4 && out_len == 4;
+	default:
+		return true;
+	}
+}
+
 /*
  * unmap_piodma (D202): the buffer id, the id again, the DVA (unaligned) and a
  * trailing word. The older firmware sends the DVA after a virtual address.

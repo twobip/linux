@@ -1299,7 +1299,8 @@ static void dcpep_handle_cb(struct apple_dcp *dcp, enum dcp_context_id context,
 	u8 depth;
 	bool handled, zero_reply;
 
-	if (dcp->fw_compat == DCP_FIRMWARE_H17P &&
+	if ((dcp->fw_compat == DCP_FIRMWARE_H17P ||
+	     dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP) &&
 	    (length < sizeof(*hdr) || !ch || ch->depth >= DCP_MAX_CALL_DEPTH ||
 	     offset >= 0x8000 || length > 0x8000 - offset)) {
 		dev_err(dev, "invalid IOMFB callback envelope\n");
@@ -1309,6 +1310,14 @@ static void dcpep_handle_cb(struct apple_dcp *dcp, enum dcp_context_id context,
 
 	tag = dcp_parse_tag(hdr->tag);
 
+	if (dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP &&
+	    (!iomfb_check_callback_v26_6_desktop(tag, hdr->in_len, hdr->out_len) ||
+	     (u64)sizeof(*hdr) + hdr->in_len + hdr->out_len != length)) {
+		dev_err(dev, "invalid desktop IOMFB callback %d (%u, %u)\n",
+			tag, hdr->in_len, hdr->out_len);
+		dcp->crashed = true;
+		return;
+	}
 
 	handled = tag >= 0 && tag < IOMFB_MAX_CB && dcp->cb_handlers &&
 		  dcp->cb_handlers[tag];
@@ -1344,11 +1353,15 @@ static void dcpep_handle_cb(struct apple_dcp *dcp, enum dcp_context_id context,
 			return;
 		}
 		/*
-		 * Leaving a callback unanswered wedges the coprocessor: it
-		 * waits for the ack forever and the outer call never returns.
-		 * On H17P answer it with a zeroed output instead.
+		 * Drain an unsupported desktop callback too. The outer modeset
+		 * must see an error even if firmware accepts the zero reply;
+		 * never pop its command before its real ACK arrives.
 		 */
-		if (dcp->fw_compat == DCP_FIRMWARE_H17P) {
+		if (dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP &&
+		    READ_ONCE(dcp->desktop->modeset_active))
+			WRITE_ONCE(dcp->desktop->modeset_callback_error, true);
+		if (dcp->fw_compat == DCP_FIRMWARE_H17P ||
+		    dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP) {
 			if (hdr->out_len)
 				memset(out, 0, hdr->out_len);
 			depth = dcp_push_depth(&ch->depth);

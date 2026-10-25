@@ -2857,6 +2857,15 @@ struct dcp_modeset_cookie {
 	u32 min_vrr;
 };
 
+/* Finish only after the RPC which contained the unknown callback has replied. */
+static bool dcp_modeset_callback_failed(struct apple_dcp *dcp, void *cookie)
+{
+	if (!READ_ONCE(dcp->desktop->modeset_callback_error))
+		return false;
+	complete_set_digital_out_mode(dcp, NULL, cookie);
+	return true;
+}
+
 /*
  * get_mode_info (A364) fills the firmware's mode record for a timing and
  * color pair before set_digital_out_mode (A413) selects it.  The request
@@ -2899,6 +2908,8 @@ static void dcp_modeset_actual_done(struct apple_dcp *dcp, void *data,
 {
 	struct dcp_modeset_cookie *modeset = cookie;
 
+	if (dcp_modeset_callback_failed(dcp, cookie))
+		return;
 	if (data && get_unaligned_le32(data) && modeset->vrr) {
 		dcp_modeset_fixed_fallback(dcp, modeset);
 		return;
@@ -2911,6 +2922,8 @@ static void dcp_modeset_after_actual_info(struct apple_dcp *dcp, void *data,
 {
 	struct dcp_modeset_cookie *modeset = cookie;
 
+	if (dcp_modeset_callback_failed(dcp, cookie))
+		return;
 	if (!data) {
 		complete_set_digital_out_mode(dcp, NULL, cookie);
 		return;
@@ -2924,6 +2937,8 @@ static void dcp_modeset_after_bootstrap(struct apple_dcp *dcp, void *data,
 {
 	struct dcp_modeset_cookie *modeset = cookie;
 
+	if (dcp_modeset_callback_failed(dcp, cookie))
+		return;
 	if (!data || get_unaligned_le32(data)) {
 		dcp_modeset_actual_done(dcp, data, cookie);
 		return;
@@ -2937,6 +2952,8 @@ static void dcp_modeset_after_bootstrap_info(struct apple_dcp *dcp, void *data,
 {
 	struct dcp_modeset_cookie *modeset = cookie;
 
+	if (dcp_modeset_callback_failed(dcp, cookie))
+		return;
 	if (!data) {
 		complete_set_digital_out_mode(dcp, NULL, cookie);
 		return;
@@ -2963,6 +2980,8 @@ static void dcp_modeset_sync_done(struct apple_dcp *dcp, void *data,
 {
 	struct dcp_modeset_cookie *modeset = cookie;
 
+	if (dcp_modeset_callback_failed(dcp, cookie))
+		return;
 	if (!data || get_unaligned_le32(data)) {
 		if (data && modeset->vrr) {
 			dcp_modeset_fixed_fallback(dcp, modeset);
@@ -2999,6 +3018,9 @@ int DCP_FW_NAME(iomfb_modeset)(struct apple_dcp *dcp,
 
 	if (dcp->crashed)
 		return -ENODEV;
+	/* A timed-out command still owns its channel until firmware replies. */
+	if (READ_ONCE(dcp->ch_cmd.depth))
+		return -EBUSY;
 
 	if (!lookup_mode(dcp, &crtc_state->mode, mode)) {
 		dev_err(dcp->dev, "no match for " DRM_MODE_FMT "\n",
@@ -3077,6 +3099,8 @@ int DCP_FW_NAME(iomfb_modeset)(struct apple_dcp *dcp,
 			 modeset->bootstrap.timing_mode_id);
 	}
 
+	WRITE_ONCE(dcp->desktop->modeset_callback_error, false);
+	WRITE_ONCE(dcp->desktop->modeset_active, true);
 	if (modeset->program_sync)
 		dcp_modeset_sync(dcp, cookie);
 	else
@@ -3097,6 +3121,9 @@ int DCP_FW_NAME(iomfb_modeset)(struct apple_dcp *dcp,
 		dev_err(dcp->dev,
 			"waiting on set_digital_out_mode failed:%d\n", ret);
 		ret = -EIO;
+	} else if (READ_ONCE(dcp->desktop->modeset_callback_error)) {
+		dev_err(dcp->dev, "unsupported callback during mode set\n");
+		ret = -EOPNOTSUPP;
 	} else if (!READ_ONCE(cookie->replied)) {
 		dev_err(dcp->dev, "set_digital_out_mode got no reply\n");
 		ret = -EIO;
@@ -3110,6 +3137,7 @@ int DCP_FW_NAME(iomfb_modeset)(struct apple_dcp *dcp,
 			jiffies_to_msecs(ret));
 		ret = 0;
 	}
+	WRITE_ONCE(dcp->desktop->modeset_active, false);
 	dcp->vrr_enabled = !ret && modeset->vrr;
 	if (modeset->notify_vrr_failure && dcp->connector)
 		dcp_queue_hotplug(dcp->connector);

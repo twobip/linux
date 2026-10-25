@@ -243,6 +243,9 @@ struct dcp_desktop_state {
 	 * element before the real one is selected.
 	 */
 	bool mode_live;
+	/* RX records an unsupported callback until the modeset RPC has drained. */
+	bool modeset_active;
+	bool modeset_callback_error;
 	/* An opt-in adaptive-sync failure stays fixed until the next boot. */
 	bool vrr_failed;
 	bool vrr_requested;

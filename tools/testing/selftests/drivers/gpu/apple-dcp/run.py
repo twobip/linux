@@ -26,11 +26,11 @@ import quiesce
 import transaction
 import accounting
 import idle
+import desktop
 import rate
 import boot
 import m4
 import display
-import desktop
 
 
 def parking_unit(root):
@@ -53,6 +53,8 @@ def main():
                                        'orientation-faults', 'backend-change', 'safe-first',
                                        'failed-flip-return', 'live-park'))
     tests = [
+        ('lifecycle', 'desktop-modeset-unmap', desktop.modeset_unmap, ((),), ()),
+        ('lifecycle', 'desktop-unknown-modeset-recovery', desktop.modeset_unknown, ((),), ()),
         ('display', 'panel-backlight-ramp', display.backlight, ((),), ()),
         ('display', 'panel-takeover-registration', desktop.brightness_takeover, ((),), ()),
         ('display', 'panel-brightness-commit', display.brightness_commit, ((),), ()),
