@@ -1140,7 +1140,11 @@ dcpep_cb_read_edt_data(struct apple_dcp *dcp, struct dcp_read_edt_data_req *req)
 static void iomfbep_cb_enable_backlight_message_ap_gated(struct apple_dcp *dcp,
 							 u8 *enabled)
 {
-#if DCP_FW_H17(DCP_FW_VER)
+#if DCP_FW_DESKTOP_26(DCP_FW_VER)
+	if (dcp_has_panel(dcp) && dcp_backlight_resend(dcp))
+		schedule_work(&dcp->bl_update_wq);
+	return;
+#elif DCP_FW_H17(DCP_FW_VER)
 	/* H17P carries the level only in presents; ask for one more. */
 	if (dcp->hw.iomfb_method_profile != DCP_IOMFB_METHODS_H17G) {
 		if (dcp_has_panel(dcp) && dcp_backlight_active(dcp) &&
@@ -2634,7 +2638,7 @@ static void dcp_swap_started(struct apple_dcp *dcp, void *data, void *cookie)
 		for (unsigned int i = 0; i < SWAP_SURFACES; i++)
 			have_surface |= !DCP_FW_SWAP(dcp).surf_null[i];
 		if (dcp_backlight_desktop_prepare(dcp, resp->swap_id,
-						have_surface, &nits))
+						  have_surface, &nits))
 			dcp_swap_set_brightness(&DCP_FW_SWAP(dcp).swap, nits);
 	}
 #endif
@@ -2917,7 +2921,7 @@ static void dcp_modeset_after_bootstrap(struct apple_dcp *dcp, void *data,
 	struct dcp_modeset_cookie *modeset = cookie;
 
 	if (!data || get_unaligned_le32(data)) {
-		complete_set_digital_out_mode(dcp, data, cookie);
+		dcp_modeset_actual_done(dcp, data, cookie);
 		return;
 	}
 	dcp_get_mode_info(dcp, &modeset->actual, dcp_modeset_after_actual_info,
@@ -3106,6 +3110,8 @@ int DCP_FW_NAME(iomfb_modeset)(struct apple_dcp *dcp,
 	kref_put(&cookie->refcount, release_wait_cookie);
 
 	dcp->desktop->mode_live = !ret;
+	if (READ_ONCE(dcp->desktop->vrr_failed) && dcp->connector)
+		dcp_queue_hotplug(dcp->connector);
 	return ret;
 }
 #else
@@ -3364,9 +3370,14 @@ void DCP_FW_NAME(iomfb_flush)(struct apple_dcp *dcp, struct drm_crtc *crtc, stru
 	}
 
 #if DCP_FW_DESKTOP_26(DCP_FW_VER)
-	/* Types 1, 2 and 7 carry the same desktop presentation deadline. */
-	req->swap.timestamp[0] = req->swap.timestamp[1] = req->swap.timestamp[6] =
-		dcp_desktop_present_deadline(has_surface, dcp->use_timestamps);
+	{
+		u64 deadline = dcp_desktop_present_deadline(has_surface, dcp->use_timestamps);
+
+		/* Types 1, 2 and 7 carry the same desktop presentation deadline. */
+		req->swap.timestamp[0] = deadline;
+		req->swap.timestamp[1] = deadline;
+		req->swap.timestamp[6] = deadline;
+	}
 #else
 	if (has_surface && (dcp->use_timestamps || dcp->vrr_enabled)) {
 		u64 submit_timestamp = dcp->swap_submit_timestamp;

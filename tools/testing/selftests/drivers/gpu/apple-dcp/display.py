@@ -194,12 +194,13 @@ def adaptive(root):
         'static void dcp_modeset_sync('))
     cookie=block(source,'struct dcp_modeset_cookie {')+';\n'
     main=(root/'drivers/gpu/drm/apple/iomfb.c').read_text()
-    gate=block(main,'bool dcp_desktop_vrr_supported(')
+    gate=block(main,'bool dcp_desktop_vrr_supported(') + block(main,'int dcp_desktop_vrr_check(')
     return r'''
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
+#include <errno.h>
 typedef uint32_t u32;
 typedef uint64_t u64;
 #define READ_ONCE(x) (x)
@@ -212,6 +213,11 @@ struct dcp_set_digital_out_mode_req {u32 color_mode_id,timing_mode_id;};
 struct dcp_set_parameter_dcp { u32 param; u64 value[4]; u32 count; };
 struct apple_dcp {void *dev;int fw_compat;bool main_display,panel;struct {bool vrr_failed;} *desktop;};
 static bool t6041_vrr;
+struct drm_display_mode {int id;};
+struct drm_crtc_state {bool vrr_enabled;struct drm_display_mode mode;};
+struct dcp_display_mode {bool vrr;};
+static bool lookup_mode(struct apple_dcp *d,struct drm_display_mode *m,struct dcp_display_mode *out)
+{out->vrr=m->id==120;return m->id==60 || m->id==120;}
 static bool dcp_has_panel(struct apple_dcp *d) {return d->panel;}
 static u32 get_unaligned_le32(const void *p) {u32 v;memcpy(&v,p,4);return v;}
 typedef void (*callback)(struct apple_dcp *,void *,void *);
@@ -243,7 +249,13 @@ int main(void)
 {
     struct apple_dcp d={.fw_compat=DCP_FIRMWARE_V_26_6_DESKTOP,.main_display=true,.panel=true};
     __typeof__(*d.desktop) desktop={0};d.desktop=&desktop;
+    struct drm_crtc_state state={.vrr_enabled=true,.mode={120}};
+    assert(dcp_desktop_vrr_check(&d,&state)==-EINVAL);
     assert(!dcp_desktop_vrr_supported(&d));t6041_vrr=true;
+    assert(!dcp_desktop_vrr_check(&d,&state));
+    state.mode.id=60;assert(dcp_desktop_vrr_check(&d,&state)==-EINVAL);
+    state.vrr_enabled=false;assert(!dcp_desktop_vrr_check(&d,&state));
+    state.vrr_enabled=true;state.mode.id=120;
     assert(dcp_desktop_vrr_supported(&d));
     d.main_display=false;assert(!dcp_desktop_vrr_supported(&d));d.main_display=true;
     d.panel=false;assert(!dcp_desktop_vrr_supported(&d));d.panel=true;
@@ -256,6 +268,7 @@ int main(void)
     /* Rejected enable is cleared before a fixed timing is selected. */
     initialize(&m);dcp_modeset_sync(&d,&m);reply(&d,1,&error);
     assert(desktop.vrr_failed && !dcp_desktop_vrr_supported(&d) && !m.vrr && !parameter.value[0]);
+    assert(!dcp_desktop_vrr_check(&d,&state)); /* Recovery re-applies fixed refresh. */
     reply(&d,1,&zero);selected(&d,&m);
     /* A rejected modeset gets one fixed-refresh retry. */
     desktop.vrr_failed=false;initialize(&m);dcp_modeset_sync(&d,&m);
@@ -273,6 +286,45 @@ int main(void)
     assert(requested.color_mode_id==13 && requested.timing_mode_id==12);
     reply(&d,2,&zero);reply(&d,3,&zero);selected(&d,&m);
     assert(parameters && infos && modes);
+    return 0;
+}
+'''
+
+
+def takeover(root):
+    prefix=backlight(root).split('static void completed(')[0]
+    prefix=prefix.replace('static inline ', 'static inline __attribute__((unused)) ')
+    function=block((root/'drivers/gpu/drm/apple/dcp_backlight.c').read_text(),
+                   'int dcp_backlight_takeover(')
+    return prefix + r'''
+#define DCP_FIRMWARE_V_26_6_DESKTOP 5
+#define READ_ONCE(x) (x)
+#define spin_lock_irqsave(p,f) do {assert(!*(p));*(p)=true;(f)=0;} while(0)
+#define spin_unlock_irqrestore(p,f) do {assert(*(p));*(p)=false;(void)(f);} while(0)
+struct apple_dcp {
+    int fw_compat;
+    struct {u32 maximum;} brightness;
+    struct {bool lock;struct dcp_backlight_state state;} backlight;
+    struct {bool inherited_brightness_valid;u32 inherited_brightness;} *desktop;
+};
+static unsigned legacy;
+bool dcp_backlight_active(struct apple_dcp *d) {return d->fw_compat==1 && d->backlight.state.ready;}
+static int iomfb_configure_backlight_h17p(struct apple_dcp *d,u32 max,bool valid,u32 nits,bool fallback,u32 guessed)
+{assert(max==600 && valid && nits==100 && !fallback && !guessed);legacy++;return 0;}
+''' + function + r'''
+int main(void) {
+    struct apple_dcp d={.fw_compat=5,.brightness={600}};
+    __typeof__(*d.desktop) saved={0};d.desktop=&saved;
+    assert(!dcp_backlight_takeover(&d,0));
+    assert(saved.inherited_brightness_valid && !saved.inherited_brightness && !legacy);
+    assert(!dcp_backlight_takeover(&d,500000) && !saved.inherited_brightness);
+    saved.inherited_brightness_valid=false;
+    assert(dcp_backlight_takeover(&d,1300000)==-ERANGE && !saved.inherited_brightness_valid);
+    assert(!dcp_backlight_takeover(&d,700000) && saved.inherited_brightness==600);
+    d.backlight.state.ready=true; saved.inherited_brightness_valid=false;
+    assert(!dcp_backlight_takeover(&d,100000) && !saved.inherited_brightness_valid);
+    d.fw_compat=1;d.backlight.state.ready=false;
+    assert(!dcp_backlight_takeover(&d,100000) && legacy==1);
     return 0;
 }
 '''

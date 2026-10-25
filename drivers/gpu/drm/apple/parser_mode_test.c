@@ -46,21 +46,21 @@ static void dcp_refresh_range_test(struct kunit *test)
 	u32 low = 0, high = 0;
 
 	KUNIT_EXPECT_TRUE(test, dcp_refresh_range(120U << 16, 0, 0,
-						 true, &low, &high));
+						  true, &low, &high));
 	KUNIT_EXPECT_EQ(test, low, 24U << 16);
 	KUNIT_EXPECT_EQ(test, high, 120U << 16);
 	KUNIT_EXPECT_FALSE(test, dcp_refresh_range(60U << 16, 0, 0,
-						  true, &low, &high));
+						   true, &low, &high));
 	KUNIT_EXPECT_FALSE(test, dcp_refresh_range(120U << 16, 0, 0,
-						  false, &low, &high));
+						   false, &low, &high));
 	KUNIT_EXPECT_FALSE(test, dcp_refresh_range(120U << 16, 0, 120U << 16,
-						  true, &low, &high));
+						   true, &low, &high));
 	KUNIT_EXPECT_FALSE(test, dcp_refresh_range(120U << 16, 24U << 16,
-						  144U << 16, true, &low, &high));
+						   144U << 16, true, &low, &high));
 	KUNIT_EXPECT_FALSE(test, dcp_refresh_range(120U << 16, 120U << 16,
-						  24U << 16, true, &low, &high));
+						   24U << 16, true, &low, &high));
 	KUNIT_EXPECT_TRUE(test, dcp_refresh_range(120U << 16, 48U << 16,
-						 120U << 16, true, &low, &high));
+						  120U << 16, true, &low, &high));
 	KUNIT_EXPECT_EQ(test, low, 48U << 16);
 	KUNIT_EXPECT_EQ(test, dcp_desktop_present_deadline(true, true), 120ULL);
 	KUNIT_EXPECT_EQ(test, dcp_desktop_present_deadline(false, true), 0ULL);

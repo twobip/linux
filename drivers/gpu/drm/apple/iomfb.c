@@ -102,6 +102,21 @@ bool dcp_desktop_vrr_supported(struct apple_dcp *dcp)
 		!READ_ONCE(dcp->desktop->vrr_failed);
 }
 
+int dcp_desktop_vrr_check(struct apple_dcp *dcp, struct drm_crtc_state *state)
+{
+	struct dcp_display_mode mode;
+
+	if (dcp->fw_compat != DCP_FIRMWARE_V_26_6_DESKTOP || !state->vrr_enabled)
+		return 0;
+	/* Let the recovery commit re-apply an existing VRR state at fixed refresh. */
+	if (READ_ONCE(dcp->desktop->vrr_failed))
+		return 0;
+	if (!dcp_desktop_vrr_supported(dcp) ||
+	    !lookup_mode(dcp, &state->mode, &mode) || !mode.vrr)
+		return -EINVAL;
+	return 0;
+}
+
 static bool dcp_mode_vrr_supported(struct apple_dcp *dcp,
 				   const struct dcp_display_mode *mode)
 {
@@ -2006,7 +2021,8 @@ static int dcp_desktop_modeset(struct apple_dcp *dcp,
 
 	if (d->trial_modeset_ok) {
 		d->trial_modeset_ok = false;
-		if (!crtc_state->vrr_enabled && d->mode_live && lookup_mode(dcp, &crtc_state->mode, &matched) &&
+		if (!crtc_state->vrr_enabled && d->mode_live &&
+		    lookup_mode(dcp, &crtc_state->mode, &matched) &&
 		    matched.timing_mode_id == d->trial_timing_mode_id &&
 		    matched.color_mode_id == d->trial_color_mode_id) {
 			dev_dbg(dcp->dev, "keeping the takeover mode " DRM_MODE_FMT "\n",

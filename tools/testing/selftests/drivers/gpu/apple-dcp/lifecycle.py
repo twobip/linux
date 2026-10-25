@@ -1709,6 +1709,9 @@ static int __attribute__((unused)) drm_color_lut_size(const void *blob)
 { (void)blob; assert(!"gamma LUT without a colour-management change"); return 0; }
 static unsigned int __attribute__((unused)) dcp_gamma_lut_size(struct platform_device *p)
 { (void)p; assert(!"gamma LUT without a colour-management change"); return 0; }
+/* Desktop admission is covered by panel-adaptive-fallback. */
+static int dcp_desktop_vrr_check(struct apple_dcp *d, struct drm_crtc_state *s)
+{ (void)d; (void)s; return 0; }
 /* Route-follow is for Type-C displays; this DCP has no Type-C routes. */
 static bool __attribute__((unused)) typec_follow_crtc = true;
 static int __attribute__((unused)) dcp_typec_follow_check(struct apple_dcp *d, struct drm_crtc *c,

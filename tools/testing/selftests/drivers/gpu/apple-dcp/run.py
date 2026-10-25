@@ -53,6 +53,7 @@ def main():
                                        'failed-flip-return', 'live-park'))
     tests = [
         ('display', 'panel-backlight-ramp', display.backlight, ((),), ()),
+        ('display', 'panel-brightness-takeover', display.takeover, ((),), ()),
         ('display', 'panel-mode-catalog', display.modes, ((),), ()),
         ('display', 'panel-refresh-range', display.refresh, ((),), ()),
         ('display', 'panel-adaptive-fallback', display.adaptive, ((),), ()),
