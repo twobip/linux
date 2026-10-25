@@ -316,10 +316,9 @@ struct apple_dcp {
     struct {bool lock;struct dcp_backlight_state state;} backlight;
     struct {bool inherited_brightness_valid;u32 inherited_brightness;} *desktop;
 };
-#define BACKLIGHT_UPDATE_HOTKEY 1
 static unsigned legacy,notifications;
-static void backlight_force_update(void *bd,int reason)
-{assert(bd && reason==BACKLIGHT_UPDATE_HOTKEY);notifications++;}
+static void dcp_backlight_sync_hint(struct apple_dcp *d)
+{assert(d->brightness.bl_dev);notifications++;}
 bool dcp_backlight_active(struct apple_dcp *d) {return d->fw_compat==1 && d->backlight.state.ready;}
 static int iomfb_configure_backlight_h17p(struct apple_dcp *d,u32 max,bool valid,u32 nits,bool fallback,u32 guessed)
 {assert(max==600 && valid && nits==100 && !fallback && !guessed);legacy++;return 0;}

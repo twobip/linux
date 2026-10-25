@@ -113,6 +113,23 @@ static void dcp_backlight_desktop_kick(struct apple_dcp *dcp)
 		schedule_work(&dcp->bl_update_wq);
 }
 
+/* A loader hint describes the inherited level, not a new brightness request. */
+static void dcp_backlight_sync_hint(struct apple_dcp *dcp)
+{
+	struct backlight_device *bd = READ_ONCE(dcp->brightness.bl_dev);
+	unsigned long flags;
+
+	if (!bd)
+		return;
+	/* Match update_status's lock order and never replace a user's target. */
+	mutex_lock(&bd->ops_lock);
+	spin_lock_irqsave(&dcp->backlight.lock, flags);
+	if (!dcp->backlight.state.controlled && dcp->backlight.state.level_known)
+		bd->props.brightness = dcp->backlight.state.target;
+	spin_unlock_irqrestore(&dcp->backlight.lock, flags);
+	mutex_unlock(&bd->ops_lock);
+}
+
 int dcp_backlight_takeover(struct apple_dcp *dcp, u32 millinits)
 {
 	u32 maximum, nits;
@@ -140,8 +157,8 @@ int dcp_backlight_takeover(struct apple_dcp *dcp, u32 millinits)
 				seeded = dcp_bl_seed(&dcp->backlight.state, nits);
 		}
 		spin_unlock_irqrestore(&dcp->backlight.lock, flags);
-		if (seeded && READ_ONCE(dcp->brightness.bl_dev))
-			backlight_force_update(dcp->brightness.bl_dev, BACKLIGHT_UPDATE_HOTKEY);
+		if (seeded)
+			dcp_backlight_sync_hint(dcp);
 		return 0;
 	}
 
@@ -717,6 +734,9 @@ int dcp_backlight_register(struct apple_dcp *dcp)
 		return PTR_ERR(bl_dev);
 
 	dcp->brightness.bl_dev = bl_dev;
+	/* A hint may have arrived between the property snapshot and registration. */
+	if (dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP)
+		dcp_backlight_sync_hint(dcp);
 	if (!dcp_backlight_active(dcp) &&
 	    dcp->fw_compat != DCP_FIRMWARE_V_26_6_DESKTOP)
 		dcp->brightness.dac = calculate_dac(dcp, dcp->brightness.nits);
