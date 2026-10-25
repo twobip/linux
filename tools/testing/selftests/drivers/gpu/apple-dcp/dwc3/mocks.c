@@ -26,6 +26,7 @@ struct apple_atcphy {
 	u32 dp_usb_context[2][27];
 	bool pipe_pending, usb_off_pending, usb_off_drained;
 	bool usb3_port_off, park_owed;
+	bool t8103_dummy_pending, t8103_usb3_retry, t8103_usb3_workaround;
 	enum atcphy_mode mode, typec_mode;
 	enum atcphy_pipehandler_state pipe_state;
 };
@@ -72,7 +73,7 @@ struct dwc3 {
 	struct phy *usb2_generic_phy[3], *usb3_generic_phy[3];
 	int num_usb2_ports, num_usb3_ports, usb2_phy, usb3_phy;
 	struct reset_controller_dev *reset;
-	int dev, usb_psy, vbus_draw_work, dr_mode;
+	int dev, usb_psy, vbus_draw_work, dr_mode, current_dr_role;
 	struct { void *notifier_call; } psy_nb;
 };
 struct dwc3_apple {
@@ -83,6 +84,7 @@ struct dwc3_apple {
 	void *dev;
 	struct phy *usb2_phy, *usb3_phy;
 	bool fixed_hub, core_active, core_exit_pending, reset_pending, shutting_down;
+	bool rpm_held, host_only;
 	unsigned long usb2_power_off_pending, usb3_power_off_pending;
 };
 static unsigned int polls, fail_poll, reset_calls, reset_writes, core_writes;
@@ -361,3 +363,24 @@ static void dwc3_free_event_buffers(struct dwc3 *d)
 enum { USB_DR_MODE_HOST = 1, DWC3_GCTL_PRTCAP_HOST = 1 };
 static void dwc3_apple_set_ptrcap(struct dwc3_apple *a, u32 mode)
 { (void)a; (void)mode; assert(!"J713 pre-init path entered a legacy fixture"); }
+
+/* Runtime-PM ownership is observable even though this fixture has no device PM core. */
+static int pm_runtime_resume_and_get(void *dev)
+{
+	(void)dev;
+	return 0;
+}
+static void pm_runtime_mark_last_busy(void *dev)
+{
+	(void)dev;
+}
+static void pm_runtime_put_autosuspend(void *dev)
+{
+	(void)dev;
+}
+/* The legacy profile never has T8132 tunables. */
+static void dwc3_apple_apply_tunables(struct dwc3_apple *appledwc)
+{
+	assert(!appledwc->host_only);
+}
+#define dev_info_ratelimited(...) ((void)0)
