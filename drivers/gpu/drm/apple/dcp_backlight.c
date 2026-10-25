@@ -22,9 +22,6 @@
 #define MIN_BRIGHTNESS_PART2	103U
 #define MAX_BRIGHTNESS_PART2	510U
 
-/* Initial level of a desktop 26.x panel, which reports none. */
-#define DCP_DESKTOP_DEFAULT_NITS	250U
-
 /*
  * lookup for display brightness 2 to 99 nits
  * */
@@ -128,6 +125,20 @@ int dcp_backlight_takeover(struct apple_dcp *dcp, u32 millinits)
 	ret = dcp_bl_takeover_nits(maximum, millinits, &nits);
 	if (ret)
 		return ret;
+
+	if (dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP) {
+		unsigned long flags;
+
+		/* Freeze the first hint before publishing the class device. */
+		spin_lock_irqsave(&dcp->backlight.lock, flags);
+		if (!dcp->backlight.state.ready &&
+		    !dcp->desktop->inherited_brightness_valid) {
+			dcp->desktop->inherited_brightness = nits;
+			dcp->desktop->inherited_brightness_valid = true;
+		}
+		spin_unlock_irqrestore(&dcp->backlight.lock, flags);
+		return 0;
+	}
 
 	/* Keep the first bounded hint. Later reports are not user requests. */
 	return iomfb_configure_backlight_h17p(dcp, maximum, true, nits, false, 0);
@@ -391,7 +402,7 @@ void dcp_backlight_desktop_power(struct apple_dcp *dcp, bool on)
 
 /* Reserve only after swap_start succeeds, using its actual firmware ID. */
 bool dcp_backlight_desktop_prepare(struct apple_dcp *dcp, u32 id,
-				    bool have_surface, u32 *nits)
+				   bool have_surface, u32 *nits)
 {
 	unsigned long flags;
 	int ret;
@@ -418,7 +429,7 @@ void dcp_backlight_desktop_finish(struct apple_dcp *dcp, u32 id,
 		return;
 	spin_lock_irqsave(&dcp->backlight.lock, flags);
 	finished = dcp_bl_swap_finish(&dcp->backlight.state,
-				     &dcp->desktop->backlight, id, reply, accepted);
+				      &dcp->desktop->backlight, id, reply, accepted);
 	delay = dcp_bl_retry_delay(&dcp->backlight.state);
 	pending = dcp->backlight.state.dirty;
 	spin_unlock_irqrestore(&dcp->backlight.lock, flags);
@@ -662,13 +673,13 @@ int dcp_backlight_register(struct apple_dcp *dcp)
 		if (!dcp->brightness.maximum || dcp->brightness.maximum > INT_MAX)
 			return -ERANGE;
 		props.max_brightness = dcp->brightness.maximum;
-		if (!props.brightness)
-			props.brightness = min_t(u32, DCP_DESKTOP_DEFAULT_NITS,
-						 props.max_brightness);
+		/* Match the Neo's reporting default without presenting a guess. */
+		props.brightness = props.max_brightness / 2;
 		spin_lock_irqsave(&dcp->backlight.lock, flags);
 		if (!dcp->backlight.state.ready) {
-			int ret = dcp_bl_init(&dcp->backlight.state,
-					      props.max_brightness, false, 0,
+			int ret = dcp_bl_init(&dcp->backlight.state, props.max_brightness,
+					      dcp->desktop->inherited_brightness_valid,
+					      dcp->desktop->inherited_brightness,
 					      true, props.brightness);
 
 			if (ret) {

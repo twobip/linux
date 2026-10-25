@@ -1683,6 +1683,9 @@ static int iomfb_m4_get_mode(struct apple_dcp *d,struct drm_display_mode *m)
 static unsigned drm_plane_mask(void *p) { (void)p; assert(false); return 0; }
 static bool drm_mode_equal(const struct drm_display_mode *a,const struct drm_display_mode *b)
 { (void)a; (void)b; assert(false); return false; }
+/* Desktop admission is covered by panel-adaptive-fallback. */
+static int dcp_desktop_vrr_check(struct apple_dcp *d, struct drm_crtc_state *s)
+{ (void)d; (void)s; return 0; }
 /* Route-follow is for Type-C displays; this DCP has no Type-C routes. */
 static bool __attribute__((unused)) typec_follow_crtc = true;
 static int __attribute__((unused)) dcp_typec_follow_check(struct apple_dcp *d, struct drm_crtc *c,
