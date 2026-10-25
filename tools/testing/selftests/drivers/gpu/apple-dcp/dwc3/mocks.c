@@ -72,7 +72,7 @@ struct dwc3 {
 	struct phy *usb2_generic_phy[3], *usb3_generic_phy[3];
 	int num_usb2_ports, num_usb3_ports, usb2_phy, usb3_phy;
 	struct reset_controller_dev *reset;
-	int dev, usb_psy, vbus_draw_work, dr_mode;
+	int dev, usb_psy, vbus_draw_work, dr_mode, current_dr_role;
 	struct { void *notifier_call; } psy_nb;
 };
 struct dwc3_apple {
@@ -82,7 +82,8 @@ struct dwc3_apple {
 	int lock;
 	void *dev;
 	struct phy *usb2_phy, *usb3_phy;
-	bool fixed_hub, core_active, core_exit_pending, reset_pending, shutting_down;
+	bool host_only, rpm_held, fixed_hub, core_active, core_exit_pending;
+	bool reset_pending, shutting_down;
 	unsigned long usb2_power_off_pending, usb3_power_off_pending;
 };
 static unsigned int polls, fail_poll, reset_calls, reset_writes, core_writes;
@@ -361,3 +362,19 @@ static void dwc3_free_event_buffers(struct dwc3 *d)
 enum { USB_DR_MODE_HOST = 1, DWC3_GCTL_PRTCAP_HOST = 1 };
 static void dwc3_apple_set_ptrcap(struct dwc3_apple *a, u32 mode)
 { (void)a; (void)mode; assert(!"J713 pre-init path entered a legacy fixture"); }
+
+/* Runtime PM and optional ADT tunables are boundary operations in this fixture. */
+#define pm_runtime_mark_last_busy(...) ((void)0)
+#define pm_runtime_put_autosuspend(...) ((void)0)
+static int pm_runtime_resume_and_get(void *dev)
+{
+	(void)dev;
+	return 0;
+}
+
+static void dwc3_apple_apply_tunables(struct dwc3_apple *appledwc)
+{
+	(void)appledwc;
+}
+
+#define dev_info_ratelimited(...) ((void)0)

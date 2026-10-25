@@ -49,6 +49,7 @@ static void bitmap_release_region(unsigned long *p,unsigned int bit,int order) {
 #define dev_info(...) do { diagnostic_information++; } while (0)
 
 static unsigned diagnostic_errors,diagnostic_information,legacy_publishes;
+#define DCP_FIRMWARE_V_26_6_DESKTOP 99
 #define DCP_FIRMWARE_H17P 17
 /* The T6030 14.7 backend never matches these H17P scenarios. */
 #define DCP_FIRMWARE_V_14_7 (DCP_FIRMWARE_H17P + 1)
@@ -90,7 +91,7 @@ struct apple_epic_service {
 struct apple_dcp_afkep { u8 *command_tags;bool lock,stopping;void *wq;struct work_struct service_work;struct apple_dcp *dcp;const struct apple_epic_service_ops *ops;bool wire_v2,inline_v2,match_epic_name;u32 endpoint;unsigned int num_channels;struct apple_epic_service services[AFK_MAX_CHANNEL]; };
 struct apple_connector { void *dcp;bool connected,edid_invalidation_pending;struct { int registration_state; } base;unsigned int hotplug_wq; };
 struct apple_dcp {
-    void *dev;int fw_compat;struct apple_dcp_afkep *dcpavservep;struct apple_connector *connector;
+    void *dev;int fw_compat; struct {struct apple_dcp_afkep *graph[0x20];} *desktop;struct apple_dcp_afkep *dcpavservep;struct apple_connector *connector;
     bool external_physically_absent,hpd_mutex,quiescing,typec_cable_connected;u64 typec_generation;unsigned int nr_modes;
     struct { int iomfb_method_profile; bool fw_14_7_endpoints; } hw; bool ext_dead;
     struct { bool lock,enabled;u64 epoch;int enable_completion;struct apple_epic_service *service,*opened; } dcpavserv;
@@ -592,6 +593,7 @@ static void schedule_work(int *p) { (*p)++; }
 #define dev_warn_ratelimited(...) ((void)0)
 #define trace_dcp_recv_msg(...) ((void)0)
 #define DCP_IOMFB_METHODS_H17P_EXTERNAL 2
+#define DCP_FIRMWARE_V_26_6_DESKTOP 99
 #define DCP_FIRMWARE_H17P 2
 /* The 14.7 open-before-EDID handshake is for T6030 external processors only. */
 #define DCP_FIRMWARE_V_14_7 (DCP_FIRMWARE_H17P + 1)
@@ -615,7 +617,7 @@ struct apple_dcp {
     struct { int iomfb_method_profile; bool fw_14_7_endpoints; } hw; bool ext_dead;
     bool external_physically_absent,hpd_mutex, typec_cable_connected, quiescing;
     u64 typec_generation;
-    int fw_compat;
+    int fw_compat; struct {struct apple_dcp_afkep *graph[0x20];} *desktop;
     void *dev;
 };
 struct drm_edid { int identity; };
@@ -787,11 +789,14 @@ typedef uint64_t u64;
 #define dev_warn(...) ((void)0)
 #define DCP_FW_VER 26
 #define DCP_FW_VERSION(a,b,c) (a)
+#define DCP_FW_H17(v) ((v)>=26)
+#define DCP_FW_DESKTOP_26(v) 0
 #define SZ_1M (1024*1024)
 #define DCP_IOMFB_METHODS_H17P_EXTERNAL 2
 #define dev_warn_ratelimited(...) ((void)0)
 #define dev_dbg_ratelimited(...) ((void)0)
 #define trace_dcp_recv_msg(...) ((void)0)
+#define DCP_FIRMWARE_V_26_6_DESKTOP 99
 #define DCP_FIRMWARE_H17P 2
 #define IOMFB_ENDPOINT 0x37
 #define AV_ENDPOINT 0x29
@@ -823,7 +828,7 @@ struct apple_dcp;
 struct apple_dcp_afkep { struct apple_dcp *dcp; u8 endpoint; struct mutex lock; bool stopping; struct workqueue_struct *wq; };
 struct test_mode_ticket { u64 generation; bool associated; };
 struct apple_dcp {
-    bool quiescing; int fw_compat; void *dev;
+    bool quiescing; int fw_compat; struct {struct apple_dcp_afkep *graph[0x20];} *desktop; void *dev;
     struct { int iomfb_method_profile; bool fw_14_7_endpoints; } hw; bool ext_dead;
     struct { struct mutex lock; u64 epoch; bool enabled; void *service; } dcpavserv;
     struct test_mode_ticket dummy_ticket;

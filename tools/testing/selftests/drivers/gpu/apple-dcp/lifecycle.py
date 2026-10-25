@@ -119,6 +119,7 @@ static void mod_delayed_work(int q, struct delayed_work *w, int t)
 struct apple_connector { bool connected, edid_invalidation_pending; };
 struct dcp_announce { int ends; };
 struct apple_dcp {
+ int fw_compat;
  int external_lock, hpd_mutex;
  int relink_lock, relink;
  struct { int lock; bool presentation_paused; } iomfb;
@@ -149,6 +150,9 @@ static int dcp_dptx_connect_raw(struct apple_dcp *d, u32 port, bool *waiting)
  if (!raw_error) d->dptxport[0].connected = true;
  return raw_error; }
 static bool dcp_is_typec_output(struct apple_dcp *d) { (void)d; return true; }
+#define DCP_FIRMWARE_V_26_6_DESKTOP 99
+static int dcp_desktop_dptx_connect(struct apple_dcp *d,u32 port)
+{ (void)d;(void)port;assert(!"desktop DPTX in the H17P fixture");return -EINVAL; }
 static int __attribute__((unused)) dcp_dptx_connect(struct apple_dcp *d, u32 port) { (void)d; (void)port; return 0; }
 #define DPTX_RECONNECT_DELAY 500
 static int settle_error, power_error, hpd_error, release_error;
@@ -492,7 +496,7 @@ def bounce(root):
          ' void *phy, *dev, *active_typec_route;\n'
          ' int dptx_die, dptx_phy, dptx_dfp_port, connector_type;\n'
          ' bool external, external_link_ready, crashed;\n'
-         ' bool typec_work_enabled; int fw_compat; struct { bool fw_14_7_endpoints; } hw;\n'
+         ' bool typec_work_enabled; struct { bool fw_14_7_endpoints; } hw;\n'
          ' struct { bool active; } split;')
     old_raw = unit[unit.index('static int dcp_dptx_connect_raw('):]
     old_raw = old_raw[:old_raw.index('return raw_error; }') + len('return raw_error; }')]
@@ -1365,6 +1369,7 @@ typedef uint64_t u64;
 #define msleep(x) ((void)(x))
 #define component_compare_of 0
 #define apple_dcp_id_tbl 0
+static bool dcp_t6041_ext_enabled(void) {return true;}
 static int dcp_comp_ops;
 struct device_node { bool available, external, phys; unsigned int index; u32 firmware[3], compat[3]; int firmware_cells, compat_cells; };
 struct device { struct device_node *of_node; void *data; };
@@ -1660,7 +1665,7 @@ struct apple_dcp {
 struct platform_device { struct apple_dcp *data; };
 struct drm_crtc { struct platform_device *dcp; void *primary; };
 struct drm_display_mode { int unused; };
-struct drm_crtc_state { bool enable, vrr_enabled, modeset; struct drm_display_mode mode; void *ctm, *degamma_lut, *gamma_lut; unsigned plane_mask; };
+struct drm_crtc_state { bool color_mgmt_changed, enable, vrr_enabled, modeset; struct drm_display_mode mode; void *ctm, *degamma_lut, *gamma_lut; unsigned plane_mask; };
 /* mainline 7.2 renamed struct drm_atomic_state to struct drm_atomic_commit */
 struct drm_atomic_commit { struct drm_crtc_state crtc; };
 #define to_apple_crtc(x) (x)
@@ -1683,6 +1688,8 @@ static int iomfb_m4_get_mode(struct apple_dcp *d,struct drm_display_mode *m)
 static unsigned drm_plane_mask(void *p) { (void)p; assert(false); return 0; }
 static bool drm_mode_equal(const struct drm_display_mode *a,const struct drm_display_mode *b)
 { (void)a; (void)b; assert(false); return false; }
+static unsigned drm_color_lut_size(void *lut) {assert(!"gamma blob in VRR-only fixture");return 0;}
+static unsigned dcp_gamma_lut_size(struct platform_device *p) {return 256;}
 /* Desktop admission is covered by panel-adaptive-fallback. */
 static int dcp_desktop_vrr_check(struct apple_dcp *d, struct drm_crtc_state *s)
 { (void)d; (void)s; return 0; }

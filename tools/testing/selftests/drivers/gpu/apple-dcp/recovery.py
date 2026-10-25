@@ -33,6 +33,19 @@ def check(root, output):
     if 'static int afk_send_command_common(' in afk:
         sender=extract(afk,'static int afk_send_command_common(')+'\n'+sender
     unit=unit[:unit.index('int main(void)')]
+    # These replay controls select legacy/H17P AFK, never compact EPIC.
+    unit=unit.replace('bool wire_v2,inline_v2,match_epic_name;',
+                      'bool compact,wire_v2,inline_v2,match_epic_name;')
+    sender=r'''static u32 afk_compact_next_status(struct apple_epic_service *s)
+    { (void)s; assert(!"compact EPIC in the H17P replay fixture"); return 0; }
+    static int afk_send_compact_command(struct apple_epic_service *s,u8 type,
+        const void *payload,size_t payload_len,void *output,size_t output_len,
+        u32 status,u32 *retcode,size_t *copied,unsigned long timeout)
+    { (void)s;(void)type;(void)payload;(void)payload_len;(void)output;
+      (void)output_len;(void)status;(void)retcode;(void)copied;(void)timeout;
+      assert(!"compact EPIC in the H17P replay fixture"); return -EINVAL; }
+    '''+sender
+
     unit=unit.replace('static unsigned int dma_frees,opens;',r'''
     static unsigned int dma_frees,opens;
     #define SZ_1M (1U<<20)
@@ -327,6 +340,14 @@ def check(root, output):
                           '    if(e->stopping) return -ESHUTDOWN;\n    if(type==EPIC_TYPE_COMMAND) {')
     queued=queued[:queued.index('int main(int argc')]
     queued+=r'''
+    #define RBEP_SPACE_AVAILABLE 0xa7
+    #define RBEP_WAIT_FOR_SPACE 0xa8
+    #define FIELD_PREP(mask,val) ((val)&(mask))
+    #define dma_wmb() ((void)0)
+    static bool afk_compact_capable(struct apple_dcp_afkep *e)
+    { assert(!e->compact);return false; }
+    static int afk_send(struct apple_dcp_afkep *e,u64 message)
+    { (void)e;(void)message;assert(!"compact space notification in H17P fixture");return -EINVAL; }
     struct afk_receive_message_work { struct apple_dcp_afkep *ep;u64 message;struct work_struct work; };
     static void afk_getbuf(struct apple_dcp_afkep *e,u64 m) { (void)e;(void)m;assert(!"unexpected GETBUF"); }
     static void afk_init_rxtx(struct apple_dcp_afkep *e,u64 m,struct afk_ringbuffer *r) { (void)e;(void)m;(void)r;assert(!"unexpected INIT"); }

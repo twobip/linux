@@ -48,7 +48,7 @@ def parser_fixture(root):
     metadata = block(metadata, 'struct dcp_display_metadata {') + ';\n'
     header = (base / 'parser.h').read_text()
     header = header[header.index('struct apple_dcp;'):header.index('int parse(')]
-    refresh = (base / 'dcp-refresh.h').read_text().replace('#include <linux/types.h>', '')
+    refresh = (base / 'dcp-refresh.h').read_text().replace('#include <linux/types.h>', '').replace('static inline u64 dcp_desktop_present_deadline', 'static inline __attribute__((unused)) u64 dcp_desktop_present_deadline')
     header = refresh + '\n' + header
     edid_header = (root / 'include/drm/drm_edid.h').read_text()
     edid_header = edid_header[edid_header.index('#define EDID_LENGTH'):edid_header.index('/* EDID matching */')]
@@ -596,6 +596,10 @@ struct apple_connector {''')
 #define DRM_MODE_CONNECTOR_eDP 14
 #define DCP_FW_VER 26
 #define DCP_FW_VERSION(a,b,c) (a)
+#define DCP_FW_H17(v) ((v) >= 26)
+#define DCP_FW_DESKTOP_26(v) 0
+#define DCP_FIRMWARE_V_26_6_DESKTOP 99
+#define DIV_ROUND_UP(n,d) (((n)+(d)-1)/(d))
 #define SZ_1M (1024*1024)
 #define kzalloc(n,f) calloc(1,n)
 #define dev_err(...) ((void)0)
@@ -646,6 +650,8 @@ static void drm_mode_destroy(struct drm_device *dev,struct drm_display_mode *m) 
 static bool drm_mode_match(const struct drm_display_mode *a,const struct drm_display_mode *b,unsigned flags) {
     (void)flags;return a->clock==b->clock && a->hdisplay==b->hdisplay && a->vdisplay==b->vdisplay && a->htotal==b->htotal && a->vtotal==b->vtotal && a->hsync_start==b->hsync_start && a->hsync_end==b->hsync_end && a->vsync_start==b->vsync_start && a->vsync_end==b->vsync_end && a->flags==b->flags;
 }
+static bool dcp_desktop_vrr_supported(struct apple_dcp *d)
+{ assert(d->fw_compat!=DCP_FIRMWARE_V_26_6_DESKTOP);return false; }
 static void drm_connector_set_vrr_capable_property(struct drm_connector *c,bool capable) { (void)c; (void)capable; }
 static void dcp_retry_placeholder_edid(struct apple_dcp *d,const struct drm_edid *e) { (void)d; (void)e; }
 static unsigned pending_probes;
@@ -694,7 +700,7 @@ static int __attribute__((unused)) dcp_direct_crossbar_link(struct apple_dcp *d,
                     + ''.join(apple_function(root, name) for name in ('dcp_queue_hotplug', 'dcp_modes_for_connector',
                               'apple_connector_invalidate_edid', 'apple_connector_edid_set_live'))
                     + mode_helpers)
-    publication = block(iomfb,'static void dcp_clear_connector_edid(')+'\n'+block(iomfb,'static void dcp_consume_edid_invalidation(')+mode_helpers+block(iomfb,'int dcp_get_modes(')+block(iomfb,re.search(r'^[^\n;]*\blookup_mode\(',iomfb,re.M).start())
+    publication = block(iomfb,'static void dcp_clear_connector_edid(')+'\n'+block(iomfb,'static void dcp_consume_edid_invalidation(')+mode_helpers+block(iomfb,'static bool dcp_mode_vrr_supported(')+block(iomfb,'int dcp_get_modes(')+block(iomfb,'bool lookup_mode(')
     # Drive malformed replacements through the same chunk/end ingress as firmware.
     # The dictionary cache is a boundary substitute and takes ownership of the blob.
     receipt = r'''
