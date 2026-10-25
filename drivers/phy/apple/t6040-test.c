@@ -294,6 +294,9 @@ static void t6040_test_partial_link_is_stopped(struct kunit *test)
 	KUNIT_EXPECT_TRUE(test, ctx->tphy.dp_link_dirty);
 	/* A partial on must run the off sequence, even without a committed rate. */
 	ctx->fail_at = ctx->seq_calls + 1;
+	opts.dp.link_rate = 0;
+	KUNIT_EXPECT_EQ(test, t6040_dp_configure(&ctx->dp, &opts), -ETIMEDOUT);
+	ctx->fail_at = ctx->seq_calls + 1;
 	KUNIT_EXPECT_EQ(test, t6040_dp_power_off(&ctx->dp), -ETIMEDOUT);
 	KUNIT_EXPECT_TRUE(test, ctx->tphy.dp_up);
 	KUNIT_EXPECT_EQ(test, ctx->sleep_calls, 0U);

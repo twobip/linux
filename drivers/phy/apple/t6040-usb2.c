@@ -1479,7 +1479,7 @@ static int t6040_dp_configure(struct phy *phy, union phy_configure_opts *opts_)
 		default:
 			return -EINVAL;
 		}
-		if (idx != tphy->dp_rate) {
+		if (idx != tphy->dp_rate || (idx < 0 && tphy->dp_link_dirty)) {
 			ret = t6040_dp_set_rate(tphy, idx);
 			if (ret)
 				return ret;
