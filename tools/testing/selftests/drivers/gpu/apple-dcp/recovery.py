@@ -331,7 +331,7 @@ def check(root, output):
                           'struct apple_dcp_afkep { u8 *command_tags;',1)
     queued=queued.replace('struct apple_dcp_afkep { u8 *command_tags;bool lock,stopping;',
                           'typedef u32 __le32;\n'+extract(afh,'struct afk_ringbuffer {')+';\n'
-                          'struct apple_dcp_afkep { u8 *command_tags;int started,stopped;struct afk_ringbuffer txbfr,rxbfr;void *debugfs_entry;bool lock,stopping;')
+                          'struct apple_dcp_afkep { u8 *command_tags;int started,stopped;struct afk_ringbuffer txbfr,rxbfr;void *debugfs_entry,*tx_wq,*compact_rx_data;bool lock,stopping;')
     queued=queued.replace('bool external_physically_absent,hpd_mutex,quiescing,typec_cable_connected;',
                           'bool retain_dma,external_physically_absent,hpd_mutex,quiescing,typec_cable_connected;')
     queued=queued.replace('static void run_retries(void) { assert(!ep.lock);if(ep.service_work.pending) { ep.service_work.pending=false;afk_service_worker(&ep.service_work); } }',
@@ -346,6 +346,8 @@ def check(root, output):
     #define dma_wmb() ((void)0)
     static bool afk_compact_capable(struct apple_dcp_afkep *e)
     { assert(!e->compact);return false; }
+    static void afk_cancel_commands(struct apple_dcp_afkep *e)
+    { assert(e->stopping && !e->compact); } /* Only the empty compact list. */
     static int afk_send(struct apple_dcp_afkep *e,u64 message)
     { (void)e;(void)message;assert(!"compact space notification in H17P fixture");return -EINVAL; }
     struct afk_receive_message_work { struct apple_dcp_afkep *ep;u64 message;struct work_struct work; };
