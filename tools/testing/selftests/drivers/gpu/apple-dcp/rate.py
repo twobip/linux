@@ -706,7 +706,7 @@ static int __attribute__((unused)) dcp_direct_crossbar_link(struct apple_dcp *d,
                     + ''.join(apple_function(root, name) for name in ('dcp_queue_hotplug', 'dcp_modes_for_connector',
                               'apple_connector_invalidate_edid', 'apple_connector_edid_set_live'))
                     + mode_helpers)
-    publication = block(iomfb,'static void dcp_clear_connector_edid(')+'\n'+block(iomfb,'static void dcp_consume_edid_invalidation(')+mode_helpers+block(iomfb,'static bool dcp_mode_vrr_supported(')+'\n'+block(iomfb,'int dcp_get_modes(')+block(iomfb,re.search(r'^[^\n;(]*\blookup_mode\(',iomfb,re.M).start())
+    publication = block(iomfb,'static void dcp_clear_connector_edid(')+'\n'+block(iomfb,'static void dcp_consume_edid_invalidation(')+mode_helpers+block(iomfb,'static bool dcp_mode_vrr_supported(')+'\n'+block(iomfb,'int dcp_get_modes(')+block(iomfb,'bool lookup_mode(')
     # Drive malformed replacements through the same chunk/end ingress as firmware.
     # The dictionary cache is a boundary substitute and takes ownership of the blob.
     receipt = r'''
