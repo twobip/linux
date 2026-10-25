@@ -120,6 +120,8 @@ struct dcp_display_mode {
 	struct dcp_color_mode sdr;
 	struct dcp_color_mode best;
 	bool vrr;
+	/* ProMotion fixed timings still need presentation deadlines. */
+	bool needs_timestamps;
 	/* IsPreferred, outside the external SDR path */
 	bool preferred;
 	bool metadata_timing_valid;

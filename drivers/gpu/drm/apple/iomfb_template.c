@@ -2851,6 +2851,7 @@ struct dcp_modeset_cookie {
 	bool use_bootstrap;
 	bool vrr;
 	bool program_sync;
+	bool notify_vrr_failure;
 	u32 min_vrr;
 };
 
@@ -2887,6 +2888,7 @@ static void dcp_modeset_fixed_fallback(struct apple_dcp *dcp,
 	dev_warn(dcp->dev, "adaptive sync failed, restoring fixed refresh\n");
 	WRITE_ONCE(dcp->desktop->vrr_failed, true);
 	modeset->vrr = false;
+	modeset->notify_vrr_failure = true;
 	dcp_modeset_sync(dcp, modeset);
 }
 
@@ -3026,7 +3028,7 @@ int DCP_FW_NAME(iomfb_modeset)(struct apple_dcp *dcp,
 	};
 
 	/* ProMotion needs desktop timestamps in fixed-120 mode too. */
-	dcp->use_timestamps = mode->vrr;
+	dcp->use_timestamps = mode->needs_timestamps;
 	dcp->desktop->vrr_requested = crtc_state->vrr_enabled;
 
 	/*
@@ -3107,11 +3109,11 @@ int DCP_FW_NAME(iomfb_modeset)(struct apple_dcp *dcp,
 		ret = 0;
 	}
 	dcp->vrr_enabled = !ret && modeset->vrr;
+	if (modeset->notify_vrr_failure && dcp->connector)
+		dcp_queue_hotplug(dcp->connector);
 	kref_put(&cookie->refcount, release_wait_cookie);
 
 	dcp->desktop->mode_live = !ret;
-	if (READ_ONCE(dcp->desktop->vrr_failed) && dcp->connector)
-		dcp_queue_hotplug(dcp->connector);
 	return ret;
 }
 #else

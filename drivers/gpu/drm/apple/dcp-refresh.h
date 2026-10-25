@@ -5,13 +5,18 @@
 
 #include <linux/types.h>
 
+/* Accept nominal 120 Hz and its 1000/1001 fractional timing. */
+static inline bool dcp_refresh_is_promotion(u32 rate)
+{
+	return rate >= (120U << 16) - (120U << 16) / 500 &&
+		rate <= (120U << 16);
+}
+
 /* All rates are unsigned 16.16 Hz, including fractional fixed timings. */
 static inline bool dcp_refresh_range(u32 rate, u32 minimum, u32 maximum,
 				     bool internal, u32 *low, u32 *high)
 {
-	if (!minimum && !maximum && internal &&
-	    rate >= (120U << 16) - (120U << 16) / 500 &&
-	    rate <= (120U << 16)) {
+	if (!minimum && !maximum && internal && dcp_refresh_is_promotion(rate)) {
 		minimum = 24U << 16;
 		maximum = rate;
 	}
