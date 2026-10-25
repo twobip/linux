@@ -107,6 +107,14 @@ static inline bool dcp_bl_seed(struct dcp_backlight_state *state, u32 nits)
 	return true;
 }
 
+/* Do not let userspace save or restore an unmeasured registration default. */
+static inline int dcp_bl_actual(const struct dcp_backlight_state *state)
+{
+	if (!state->ready || !state->level_known)
+		return -ENODATA;
+	return state->actual;
+}
+
 static inline bool dcp_bl_lit(const struct dcp_backlight_state *state)
 {
 	return !state->dpms_off && !state->core_blank && !state->suspended;
@@ -139,6 +147,13 @@ static inline int dcp_bl_request(struct dcp_backlight_state *state, u32 nits,
 		return -ENODATA;
 	if (nits > state->maximum)
 		return -ERANGE;
+	/* Core blank/suspend notifications do not establish a panel level. */
+	if (!state->controlled && !state->level_known && state->target == nits &&
+	    (state->core_blank != core_blank || state->suspended != suspended)) {
+		state->core_blank = core_blank;
+		state->suspended = suspended;
+		return 0;
+	}
 	state->controlled = true;
 	state->retries = 0;
 	/*

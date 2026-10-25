@@ -292,6 +292,37 @@ static void backlight_fallback_test(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, present.nits, 262U);
 }
 
+static void backlight_unknown_takeover_test(struct kunit *test)
+{
+	struct dcp_backlight_state state;
+	struct dcp_backlight_present present;
+
+	KUNIT_ASSERT_EQ(test, dcp_bl_init(&state, 600, false, 0, true, 300), 0);
+	KUNIT_EXPECT_EQ(test, dcp_bl_actual(&state), -ENODATA);
+	/* Core suspend/blank and resume do not turn the guess into a write. */
+	KUNIT_ASSERT_EQ(test, dcp_bl_request(&state, 300, true, true), 0);
+	KUNIT_ASSERT_EQ(test, dcp_bl_request(&state, 300, false, false), 0);
+	KUNIT_EXPECT_FALSE(test, state.controlled);
+	KUNIT_EXPECT_FALSE(test, state.dirty);
+	KUNIT_EXPECT_EQ(test, dcp_bl_prepare(&state, true, &present), -EALREADY);
+	KUNIT_EXPECT_EQ(test, dcp_bl_actual(&state), -ENODATA);
+
+	/* A late loader hint supplies the inherited level without a present. */
+	KUNIT_EXPECT_TRUE(test, dcp_bl_seed(&state, 250));
+	KUNIT_EXPECT_EQ(test, dcp_bl_actual(&state), 250);
+	KUNIT_EXPECT_FALSE(test, state.dirty);
+
+	/* An explicit write, even of the default, takes ownership. */
+	KUNIT_ASSERT_EQ(test, dcp_bl_init(&state, 600, false, 0, true, 300), 0);
+	KUNIT_ASSERT_EQ(test, dcp_bl_request(&state, 300, false, false), 0);
+	KUNIT_ASSERT_EQ(test, dcp_bl_prepare(&state, true, &present), 0);
+	KUNIT_EXPECT_TRUE(test, dcp_bl_complete(&state, present.sequence, false));
+	KUNIT_EXPECT_EQ(test, dcp_bl_actual(&state), -ENODATA);
+	KUNIT_ASSERT_EQ(test, dcp_bl_prepare(&state, true, &present), 0);
+	KUNIT_EXPECT_TRUE(test, dcp_bl_complete(&state, present.sequence, true));
+	KUNIT_EXPECT_EQ(test, dcp_bl_actual(&state), 300);
+}
+
 static void backlight_fallback_same_level_test(struct kunit *test)
 {
 	struct dcp_backlight_state state;
@@ -548,6 +579,7 @@ static struct kunit_case backlight_cases[] = {
 	KUNIT_CASE(backlight_inflight_dpms_test),
 	KUNIT_CASE(backlight_resend_test),
 	KUNIT_CASE(backlight_fallback_test),
+	KUNIT_CASE(backlight_unknown_takeover_test),
 	KUNIT_CASE(backlight_fallback_same_level_test),
 	KUNIT_CASE(backlight_seed_known_test),
 	KUNIT_CASE(backlight_desktop_swap_test),
