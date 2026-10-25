@@ -724,7 +724,7 @@ static int parse_mode(struct dcp_parse_ctx *handle,
 	struct timing_color_restrictions limits = {};
 	struct dcp_color_mode unsafe_rgb8 = { .score = -1 };
 	bool have_horiz = false, have_vert = false, have_virtual = false;
-	bool duplicate_scope = false, vrr_ambiguous = false;
+	bool duplicate_scope = false, vrr_ambiguous = false, vrr_fallback;
 	unsigned int vrr_seen = 0;
 	s64 min_vrr = 0, max_vrr = 0;
 	u64 clock;
@@ -876,13 +876,13 @@ static int parse_mode(struct dcp_parse_ctx *handle,
 		return -EINVAL;
 
 	/*
-	 * External H17P stays fixed. A pair of zero placeholders is also an
+	 * External H17P stays fixed. Desktop zero placeholders are also an
 	 * absent range; a partial or duplicate pair must not enable fallback.
 	 */
+	vrr_fallback = !vrr_seen || (vrr_seen == 3 && handle->zero_vrr_range_fallback);
 	if (!external_sdr && !vrr_ambiguous)
 		out->vrr = dcp_refresh_range(vert.precise_sync_rate, min_vrr,
-					     max_vrr, internal &&
-					     (!vrr_seen || vrr_seen == 3),
+					     max_vrr, internal && vrr_fallback,
 					     &out->min_vrr, &out->max_vrr);
 	out->needs_timestamps = out->vrr ||
 		(internal && dcp_refresh_is_promotion(vert.precise_sync_rate));

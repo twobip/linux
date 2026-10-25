@@ -1630,6 +1630,7 @@ int dcp_modes_replace(struct apple_dcp *dcp, struct dcp_parse_ctx *ctx,
 		if (ret)
 			return ret;
 	}
+	ctx->zero_vrr_range_fallback = dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP;
 	modes = enumerate_modes(ctx, &nr_modes, dcp->width_mm, dcp->height_mm,
 				dcp->notch_height,
 				dcp->fixed_connector_type == DRM_MODE_CONNECTOR_eDP,
