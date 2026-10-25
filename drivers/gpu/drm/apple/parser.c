@@ -875,10 +875,14 @@ static int parse_mode(struct dcp_parse_ctx *handle,
 	if (is_virtual)
 		return -EINVAL;
 
-	/* External H17P keeps fixed timings without adaptive-sync support. */
+	/*
+	 * External H17P stays fixed. A pair of zero placeholders is also an
+	 * absent range; a partial or duplicate pair must not enable fallback.
+	 */
 	if (!external_sdr && !vrr_ambiguous)
 		out->vrr = dcp_refresh_range(vert.precise_sync_rate, min_vrr,
-					     max_vrr, internal && !vrr_seen,
+					     max_vrr, internal &&
+					     (!vrr_seen || vrr_seen == 3),
 					     &out->min_vrr, &out->max_vrr);
 	out->needs_timestamps = out->vrr ||
 		(internal && dcp_refresh_is_promotion(vert.precise_sync_rate));

@@ -138,10 +138,13 @@ def modes(root):
         m=copy.deepcopy(supported[0]); m['VerticalAttributes']['PreciseSyncRate']=round(hz*65536)
         case([m], [hz], [(24<<16, round(hz*65536))])
     for lo, hi, valid in ((48<<16,120<<16,True), (0,120<<16,False),
-                          (60<<16,0,False), (0,0,False), (120<<16,24<<16,False),
+                          (60<<16,0,False), (0,0,True), (120<<16,24<<16,False),
                           (24<<16,144<<16,False), (120<<16,120<<16,False)):
         m=copy.deepcopy(supported[0]); m['MinimumVariableRefreshRate']=lo; m['MaximumVariableRefreshRate']=hi
-        case([m],[120],[(lo,hi) if valid else (0,0)])
+        case([m],[120],[(lo or 24<<16,hi or 120<<16) if valid else (0,0)])
+    for key in ('MinimumVariableRefreshRate', 'MaximumVariableRefreshRate'):
+        m=copy.deepcopy(supported[0]);m[key]=0
+        case([m],[120],[(0,0)])
     m=copy.deepcopy(supported[0]);m['MinimumVariableRefreshRate']=24<<16
     m=f['ObjectPairs'](list(m.items())+[('MinimumVariableRefreshRate',48<<16)])
     # Check duplicates against the parser directly without dict indexing in case().
