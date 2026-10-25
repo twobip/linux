@@ -1171,7 +1171,7 @@ timeout:
 #undef DP_CLK_POLL
 }
 
-/* Fixed HDMI wiring has no Type-C orientation switch. */
+/* Fixed HDMI wiring has no USB controller or PIPE handler. */
 static bool t6040_dp_only(struct t6040_usb2_phy *tphy)
 {
 	return !tphy->typec_port;
@@ -1629,6 +1629,8 @@ static int t6040_dp_probe(struct t6040_usb2_phy *tphy)
 		}
 	}
 
+	/* Initialize admission before publishing the mux to a probing tipd. */
+	tphy->dp_ok = true;
 	if (of_property_present(dev->of_node, "mode-switch")) {
 		struct typec_mux_desc mux_desc = {
 			.drvdata = tphy,
@@ -1645,7 +1647,6 @@ static int t6040_dp_probe(struct t6040_usb2_phy *tphy)
 			return -ENOMEM;
 	}
 
-	tphy->dp_ok = true;
 	return 0;
 }
 
@@ -1990,7 +1991,7 @@ static int t6040_usb2_probe(struct platform_device *pdev)
 	/* Map the core/cfg (and USB3) windows once; both sub-probes share them. */
 	t6040_map_regions(tphy, pdev);
 
-	tphy->typec_port = of_property_present(dev->of_node, "orientation-switch");
+	tphy->typec_port = !!tphy->pipehandler;
 	ret = t6040_usb3_probe(tphy, pdev);
 	if (ret)
 		return ret;
