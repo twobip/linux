@@ -134,7 +134,7 @@ def modes(root):
         supported.append(m)
     case(supported, (120, 60, 59.94, 50, 48, 47.952),
          [(24<<16, 120<<16)] + [(0,0)]*5)
-    for hz in (119.88, 120):
+    for hz in (119.88, 120, 120.01):
         m=copy.deepcopy(supported[0]); m['VerticalAttributes']['PreciseSyncRate']=round(hz*65536)
         case([m], [hz], [(24<<16, round(hz*65536))])
     for lo, hi, valid in ((48<<16,120<<16,True), (0,120<<16,False),
