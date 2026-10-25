@@ -1930,7 +1930,7 @@ static int dcp_desktop_dyn_route_select_locked(struct apple_dcp *dcp)
 		dev_dbg(dcp->dev, "no Type-C port in DP alt mode\n");
 		return -ENODEV;
 	}
-	ret = mux_control_select(d->dyn_xbar[i], d->dyn_mux_index);
+	ret = mux_control_try_select(d->dyn_xbar[i], d->dyn_mux_index);
 	if (ret) {
 		dev_warn(dcp->dev, "Type-C port %u: crossbar select: %d\n", i, ret);
 		return ret;
