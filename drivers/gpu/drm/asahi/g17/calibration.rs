@@ -61,7 +61,7 @@ impl Calibration {
         if core_mask == 0
             || core_mask & !0xfffff != 0
             || !(1..=200_000).contains(&max_power_mw)
-            || !(1..PERF_STATES - 1).contains(&base)
+            || base != 1
         {
             return Err(EINVAL);
         }

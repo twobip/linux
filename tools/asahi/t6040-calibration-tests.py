@@ -109,6 +109,7 @@ mod g17 {
             ("apple,core-mask", 0x100000),
             ("apple,max-power-mw", 0),
             ("apple,perf-base-pstate", 0),
+            ("apple,perf-base-pstate", 2),
             ("apple,cs-leak-coef", 0x7fc00000),
             ("apple,afr-leak-coef", 0xbf800000),
         ] {
