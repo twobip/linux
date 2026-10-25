@@ -22,6 +22,8 @@ struct dcp_backlight_state {
 	u32 fade_from;
 	u32 actual;
 	u32 sent_nits;
+	/* Firmware observations confirm output; they never become user requests. */
+	u32 reported;
 	u64 sequence;
 	u8 retries;
 	bool ready;
@@ -43,6 +45,7 @@ struct dcp_backlight_state {
 	 * without a loader report is not known until a present carries a level.
 	 */
 	bool level_known;
+	bool report_valid;
 };
 
 struct dcp_backlight_present {
@@ -88,8 +91,10 @@ static inline int dcp_bl_init(struct dcp_backlight_state *state, u32 maximum,
 		.target = nits,
 		.level = nits,
 		.actual = nits,
+		.reported = nits,
 		.ready = true,
 		.level_known = inherited_valid,
+		.report_valid = inherited_valid,
 	};
 	return 0;
 }
@@ -107,6 +112,22 @@ static inline bool dcp_bl_seed(struct dcp_backlight_state *state, u32 nits)
 	state->actual = nits;
 	state->level_known = true;
 	return true;
+}
+
+/*
+ * A report can establish takeover once. After Linux has a level or target,
+ * keep the observation separate from target, fade progress and completion.
+ * In particular, delayed reports cannot restart a fade or request a resend.
+ */
+static inline bool dcp_bl_report(struct dcp_backlight_state *state, u32 nits)
+{
+	if (!state->ready || nits > state->maximum)
+		return false;
+	state->reported = nits;
+	state->report_valid = true;
+	if (state->controlled || state->level_known)
+		return false;
+	return dcp_bl_seed(state, nits);
 }
 
 /* Report a usable target until a hint or completed present gives the level. */

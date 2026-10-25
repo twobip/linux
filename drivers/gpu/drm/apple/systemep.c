@@ -75,10 +75,6 @@ static int powerlog_report(struct apple_epic_service *service, enum epic_subtype
 	struct apple_dcp *dcp = service->ep->dcp;
 	int ret;
 
-	/* Later reports must not overwrite a latched hint or Linux's target. */
-	if (dcp_backlight_active(dcp))
-		return 0;
-
 	dev_dbg(dcp->dev, "systemep[ch:%u]: report type:%02x len:%zu\n",
 		service->channel, type, data_size);
 

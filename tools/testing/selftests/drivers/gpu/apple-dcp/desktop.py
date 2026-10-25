@@ -458,7 +458,7 @@ struct apple_dcp_afkep {struct apple_dcp *dcp;unsigned endpoint;struct apple_epi
 struct apple_epic_service_ops {int (*report)(struct apple_epic_service *,enum epic_subtype,const void *,size_t);};
 struct apple_epic_service {struct apple_dcp_afkep *ep;struct apple_epic_service_ops *ops;unsigned channel,users;};
 static unsigned hints;static u32 hint;
-static bool dcp_backlight_active(struct apple_dcp *d) {(void)d;return false;}
+static bool __attribute__((unused)) dcp_backlight_active(struct apple_dcp *d) {(void)d;return false;}
 static bool dcp_has_panel(struct apple_dcp *d) {(void)d;return true;}
 static int dcp_backlight_takeover(struct apple_dcp *d,u32 mnits) {(void)d;hints++;hint=mnits;return 0;}
 static u32 get_unaligned_le32(const void *p) {u32 v;memcpy(&v,p,4);return v;}
@@ -499,6 +499,68 @@ int main(void)
     memcpy(wire+16,report,8);
     afk_recv_compact_message(&ep,3,wire,23);
     assert(hints==2 && !service.users);
+    return 0;
+}
+'''
+
+
+def keys_and_reports(root):
+    import display
+    prefix = display.backlight(root).split('static void completed(')[0]
+    prefix = prefix.replace('static inline ', 'static inline __attribute__((unused)) ')
+    return prefix + r'''
+static void report(struct dcp_backlight_state *s,u32 nits)
+{
+    struct dcp_backlight_state before=*s;
+    assert(!dcp_bl_report(s,nits));
+    assert(s->target==before.target && s->level==before.level && s->actual==before.actual);
+    assert(s->fade_from==before.fade_from && s->fading==before.fading);
+    assert(s->dirty==before.dirty && s->in_flight==before.in_flight && s->sequence==before.sequence);
+    assert(s->report_valid && s->reported==nits);
+}
+static void step(struct dcp_backlight_state *s,u32 elapsed,u32 *id,u32 *previous,bool up)
+{
+    struct dcp_backlight_swap p;
+    dcp_bl_fade_step(s,elapsed,250);
+    report(s,(*id & 1)?50:550);
+    if(!s->dirty)return;
+    assert(!dcp_bl_swap_prepare(s,&p,(*id)++,true));
+    report(s,(*id & 1)?0:600);
+    if(*id & 1) {
+        assert(!dcp_bl_swap_finish(s,&p,p.id,true,true));
+        report(s,250);
+        assert(dcp_bl_swap_finish(s,&p,p.id,false,true));
+    } else {
+        assert(!dcp_bl_swap_finish(s,&p,p.id,false,true));
+        report(s,160);
+        assert(dcp_bl_swap_finish(s,&p,p.id,true,true));
+    }
+    assert(up?s->actual>=*previous:s->actual<=*previous);
+    *previous=s->actual;
+}
+int main(void)
+{
+    for(unsigned direction=0;direction<2;direction++) {
+        bool up=!direction;u32 initial=up?100:600,previous=initial,id=1;
+        struct dcp_backlight_state s;
+        assert(!dcp_bl_init(&s,600,false,0,true,300));
+        s.fade=true;s.preserve_inherited=true;
+        assert(dcp_bl_report(&s,initial) && s.actual==initial && !s.dirty);
+        report(&s,up?550:50); /* Only the first hint can establish takeover. */
+        for(unsigned key=1;key<=10;key++) {
+            u32 target=up?100+key*50:600-key*50;
+            assert(!dcp_bl_request(&s,target,false,false));
+            report(&s,up?50:550);
+            /* Key repeat retargets before any fade can finish. */
+            step(&s,16,&id,&previous,up);step(&s,32,&id,&previous,up);
+            assert(s.target==target);
+        }
+        u32 last=up?600:100;
+        for(u32 time=48;time<=256;time+=16)step(&s,time,&id,&previous,up);
+        assert(s.target==last && s.actual==last && s.level==last && !s.fading && !s.dirty);
+        for(unsigned late=0;late<64;late++)report(&s,late&1?0:600);
+        assert(s.target==last && s.actual==last && !s.dirty);
+    }
     return 0;
 }
 '''

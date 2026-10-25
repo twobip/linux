@@ -135,13 +135,29 @@ int dcp_backlight_takeover(struct apple_dcp *dcp, u32 millinits)
 	u32 maximum, nits;
 	int ret;
 
-	if (dcp_backlight_active(dcp))
-		return 0;
 	/* H17P takes nits up to the panel ceiling, not the older DAC table's. */
 	maximum = dcp->brightness.maximum;
 	ret = dcp_bl_takeover_nits(maximum, millinits, &nits);
 	if (ret)
 		return ret;
+
+	if (dcp_backlight_active(dcp) ||
+	    (dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP &&
+	     READ_ONCE(dcp->backlight.state.ready))) {
+		unsigned long flags;
+		bool seeded;
+
+		spin_lock_irqsave(&dcp->backlight.lock, flags);
+		seeded = dcp_bl_report(&dcp->backlight.state, nits);
+		if (seeded && dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP) {
+			dcp->desktop->inherited_brightness = nits;
+			dcp->desktop->inherited_brightness_valid = true;
+		}
+		spin_unlock_irqrestore(&dcp->backlight.lock, flags);
+		if (seeded)
+			dcp_backlight_sync_hint(dcp);
+		return 0;
+	}
 
 	if (dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP) {
 		unsigned long flags;
@@ -154,7 +170,7 @@ int dcp_backlight_takeover(struct apple_dcp *dcp, u32 millinits)
 			dcp->desktop->inherited_brightness = nits;
 			dcp->desktop->inherited_brightness_valid = true;
 			if (dcp->backlight.state.ready)
-				seeded = dcp_bl_seed(&dcp->backlight.state, nits);
+				seeded = dcp_bl_report(&dcp->backlight.state, nits);
 		}
 		spin_unlock_irqrestore(&dcp->backlight.lock, flags);
 		if (seeded)

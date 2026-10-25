@@ -11,6 +11,7 @@ def backlight(root):
     header = (root / 'drivers/gpu/drm/apple/dcp_backlight.h').read_text()
     header = '\n'.join(line for line in header.splitlines()
                        if not line.startswith('#include'))
+    header = header.replace('static inline ', 'static inline __attribute__((unused)) ')
     return r'''
 #include <assert.h>
 #include <stdbool.h>

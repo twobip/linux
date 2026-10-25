@@ -600,7 +600,41 @@ static void backlight_desktop_swap_test(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, state.level, 0U);
 }
 
+static void backlight_reports_keep_target_test(struct kunit *test)
+{
+	struct dcp_backlight_state state;
+	struct dcp_backlight_present present;
+
+	KUNIT_ASSERT_EQ(test, dcp_bl_init(&state, 600, false, 0, true, 300), 0);
+	state.fade = true;
+	KUNIT_EXPECT_TRUE(test, dcp_bl_report(&state, 100));
+	KUNIT_EXPECT_EQ(test, state.actual, 100U);
+	KUNIT_ASSERT_EQ(test, dcp_bl_request(&state, 600, false, false), 0);
+	KUNIT_EXPECT_TRUE(test, dcp_bl_fade_step(&state, 125, 250));
+	KUNIT_EXPECT_FALSE(test, dcp_bl_report(&state, 50));
+	KUNIT_EXPECT_EQ(test, state.target, 600U);
+	KUNIT_EXPECT_EQ(test, state.level, 350U);
+	KUNIT_EXPECT_EQ(test, state.actual, 100U);
+	KUNIT_ASSERT_EQ(test, dcp_bl_prepare(&state, true, &present), 0);
+	KUNIT_EXPECT_FALSE(test, dcp_bl_report(&state, 600));
+	KUNIT_EXPECT_TRUE(test, dcp_bl_complete(&state, present.sequence, true));
+	KUNIT_EXPECT_EQ(test, state.actual, 350U);
+	KUNIT_ASSERT_EQ(test, dcp_bl_request(&state, 500, false, false), 0);
+	KUNIT_EXPECT_FALSE(test, dcp_bl_report(&state, 100));
+	KUNIT_EXPECT_TRUE(test, dcp_bl_fade_step(&state, 125, 250));
+	KUNIT_EXPECT_EQ(test, state.level, 425U);
+	KUNIT_EXPECT_FALSE(test, dcp_bl_fade_step(&state, 250, 250));
+	KUNIT_ASSERT_EQ(test, dcp_bl_prepare(&state, true, &present), 0);
+	KUNIT_EXPECT_TRUE(test, dcp_bl_complete(&state, present.sequence, true));
+	KUNIT_EXPECT_FALSE(test, dcp_bl_report(&state, 200));
+	KUNIT_EXPECT_EQ(test, state.reported, 200U);
+	KUNIT_EXPECT_EQ(test, state.target, 500U);
+	KUNIT_EXPECT_EQ(test, state.actual, 500U);
+	KUNIT_EXPECT_FALSE(test, state.dirty);
+}
+
 static struct kunit_case backlight_cases[] = {
+	KUNIT_CASE(backlight_reports_keep_target_test),
 	KUNIT_CASE(backlight_millinits_takeover_test),
 	KUNIT_CASE(backlight_takeover_test),
 	KUNIT_CASE(backlight_range_test),

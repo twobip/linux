@@ -62,6 +62,7 @@ def main():
         ('display', 'panel-mode-catalog', display.modes, ((),), ()),
         ('display', 'desktop-panel-identity', desktop.panel_identity, ((),), ()),
         ('display', 'desktop-powerlog-framing', desktop.powerlog_framing, ((),), ()),
+        ('display', 'desktop-brightness-keys-reports', desktop.keys_and_reports, ((),), ()),
         ('display', 'panel-refresh-range', display.refresh, ((),), ()),
         ('display', 'panel-adaptive-fallback', display.adaptive, ((),), ()),
         ('display', 'panel-adaptive-watchdog', display.watchdog, ((),), ()),
