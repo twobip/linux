@@ -343,16 +343,30 @@ int dcp_typec_phy_on(struct apple_dcp *dcp)
 {
 	struct apple_dcp_typec_route *route = READ_ONCE(dcp->active_typec_route);
 
+	lockdep_assert_held(&dcp->hpd_mutex);
 	return route ? dcp_typec_route_phy_on(route) : 0;
 }
 
-static void dcp_typec_route_phy_off(struct apple_dcp_typec_route *route)
+static int dcp_typec_route_phy_off(struct apple_dcp_typec_route *route)
 {
+	int ret;
+
 	if (!route->phy_powered)
-		return;
+		return 0;
+	ret = phy_power_off(route->phy);
+	if (ret)
+		return ret;
 	route->phy_powered = false;
-	phy_power_off(route->phy);
-	phy_exit(route->phy);
+	return phy_exit(route->phy);
+}
+
+/* Like power-on, serialized against desktop connects by hpd_mutex. */
+int dcp_typec_phy_off(struct apple_dcp *dcp)
+{
+	struct apple_dcp_typec_route *route = READ_ONCE(dcp->active_typec_route);
+
+	lockdep_assert_held(&dcp->hpd_mutex);
+	return route ? dcp_typec_route_phy_off(route) : 0;
 }
 
 static int dcp_typec_route_activate(struct apple_dcp_typec_route *route,
@@ -398,7 +412,7 @@ static int dcp_typec_route_activate(struct apple_dcp_typec_route *route,
 			ret = 0;
 	} else {
 		ret = xbar == route->xbar ?
-			mux_control_select(xbar, route->mux_index) : 0;
+			mux_control_try_select(xbar, route->mux_index) : 0;
 	}
 	if (ret) {
 		if (dcp->xbar) {
@@ -491,6 +505,13 @@ static int dcp_typec_route_deactivate(struct apple_dcp_typec_route *route)
 
 	dcp_firmware_metadata_connection(dcp, READ_ONCE(dcp->typec_generation), false);
 
+	/* A failed PHY stop must keep the selected crossbar and its owner. */
+	scoped_guard(mutex, &dcp->hpd_mutex) {
+		ret = dcp_typec_route_phy_off(route);
+		if (ret)
+			return ret;
+	}
+
 	/*
 	 * Under tb_lock so a DCP link (re)configuration can neither select the
 	 * crossbar nor restart the tunnel pixel clock behind our back.
@@ -499,7 +520,6 @@ static int dcp_typec_route_deactivate(struct apple_dcp_typec_route *route)
 		if (route->deactivate_error)
 			return route->deactivate_error;
 		if (!route->deactivate_xbar_done) {
-			dcp_typec_route_phy_off(route);
 			if (!route->tunnel || route->xbar_up)
 				ret = mux_control_deselect(route->active_xbar ?: route->xbar);
 			else
@@ -1382,6 +1402,41 @@ static int dcp_typec_route_prepare(struct typec_mux_dev *mux,
 	return 0;
 }
 
+/* An unsuccessful desktop attach must not keep a spare pipeline or PHY. */
+static int dcp_typec_desktop_release(struct apple_dcp_typec_port *port)
+{
+	struct apple_dcp *dcp = port->owner->dcp;
+	int ret;
+
+	ret = dcp_dptx_disconnect_oob(to_platform_device(dcp->dev), 0);
+	if (ret)
+		return ret;
+	ret = dcp_typec_route_deactivate(port->owner);
+	if (ret)
+		return ret;
+	WRITE_ONCE(dcp->typec_cable_connected, false);
+	port->owner = NULL;
+	port->hpd = false;
+	port->applied_valid = false;
+	return 0;
+}
+
+static void dcp_typec_route_abort(struct typec_mux_dev *mux,
+				struct typec_mux_state *state)
+{
+	struct apple_dcp_typec_route *route = typec_mux_get_drvdata(mux);
+	struct apple_dcp_typec_port *port = route->port;
+	int ret;
+
+	guard(mutex)(&dcp_typec_fabric_lock);
+	if (!port->owner || port->hpd || port->safe_pending ||
+	    port->owner->dcp->fw_compat != DCP_FIRMWARE_V_26_6_DESKTOP)
+		return;
+	ret = dcp_typec_desktop_release(port);
+	if (ret)
+		dev_warn(route->dcp->dev, "Type-C attach cleanup held: %d\n", ret);
+}
+
 static int dcp_typec_route_finish(struct typec_mux_dev *mux,
 				  struct typec_mux_state *state)
 {
@@ -1390,6 +1445,26 @@ static int dcp_typec_route_finish(struct typec_mux_dev *mux,
 	int ret;
 
 	guard(mutex)(&dcp_typec_fabric_lock);
+	/* All mode switches have now seen DP and the orientation, in either order. */
+	if (dcp_typec_route_is_dp(state) && port->owner && !port->hpd &&
+	    port->owner->dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP) {
+		struct typec_displayport_data *data = state->data;
+		struct apple_dcp *dcp = port->owner->dcp;
+
+		if (!data || !(data->status & DP_STATUS_HPD_STATE))
+			return 0;
+		WRITE_ONCE(dcp->typec_cable_connected, true);
+		ret = dcp_dptx_connect_oob(to_platform_device(dcp->dev), 0);
+		if (ret) {
+			int cleanup = dcp_typec_desktop_release(port);
+
+			/* A clean failure leaves USB usable; an unsafe stop is retried. */
+			return cleanup ?: -ENODEV;
+		}
+		port->hpd = true;
+		port->applied_valid = true;
+		return 0;
+	}
 	if (state->mode != TYPEC_STATE_SAFE || !port->safe_pending ||
 	    port->safe_finish_ready)
 		return 0;
@@ -1612,6 +1687,9 @@ static int dcp_typec_route_set(struct typec_mux_dev *mux,
 	if (hpd && !port->hpd) {
 		struct apple_dcp *dcp = port->owner->dcp;
 
+		/* The PHY provider may follow us in the set phase. */
+		if (dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP)
+			return 0;
 		WRITE_ONCE(dcp->typec_cable_connected, true);
 		if (dcp->typec_connector)
 			dcp_dptx_connect_oob(to_platform_device(dcp->dev), 0);
@@ -3645,6 +3723,7 @@ static int dcp_register_typec_routes_present(void *data)
 		desc.prepare = dcp_typec_route_prepare;
 		desc.finish = dcp_typec_route_finish;
 		desc.commit = dcp_typec_route_commit;
+		desc.abort = dcp_typec_route_abort;
 		desc.name = mux_name;
 		desc.drvdata = route;
 		route->typec_mux = typec_mux_register(dev, &desc);

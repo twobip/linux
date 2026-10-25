@@ -1928,13 +1928,14 @@ static int dcp_desktop_dptx_connect(struct apple_dcp *dcp, u32 port)
 		dev_warn(dcp->dev, "DPTX port %u: connect failed: %d\n", port, ret);
 		goto out_unlock;
 	}
+	/* A failed display request still leaves a connected firmware port to stop. */
+	dptx->connected = true;
 	ret = dptxport_request_display(dptx->service);
 	if (ret) {
 		dev_warn(dcp->dev, "DPTX port %u: display request failed: %d\n",
 			 port, ret);
 		goto out_unlock;
 	}
-	dptx->connected = true;
 
 	/*
 	 * The firmware does not take HPD from the DP2HDMI converter on its
@@ -1978,6 +1979,10 @@ static int dcp_desktop_dptx_disconnect_oob(struct apple_dcp *dcp, u32 port)
 			dptxport_set_hpd(dcp->dptxport[port].service, false);
 	}
 	ret = dcp_dptx_disconnect(dcp, port);
+	if (!ret) {
+		scoped_guard(mutex, &dcp->hpd_mutex)
+			ret = dcp_typec_phy_off(dcp);
+	}
 	if (!dcp->main_display)
 		dcp->desktop->ext_pipe_off = true;
 	return ret;

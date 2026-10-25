@@ -29,6 +29,7 @@ import idle
 import rate
 import boot
 import m4
+import typec_desktop
 
 
 def parking_unit(root):
@@ -74,6 +75,7 @@ def main():
         ('phy', 'usb-unreachable', lambda r: pm.ownership(r, True), ((),), ()),
         ('lifecycle', 'cpuidle-s2idle', idle.s2idle, ((),), ('-Wno-unused-parameter', '-Wno-unused-variable')),
         ('lifecycle', 'typec-probe', pm.probe, ((),), ()),
+        ('lifecycle', 'desktop-typec-finalize', typec_desktop.lifecycle, ((),), ()),
         ('lifecycle', 'quiesce-before-safe', quiesce.make_unit, tuple((c,) for c in ('ordered','power','ack','role','bolt','mux','duplicate','error-latched','withdrawn-still-latched','legacy','fabric','tunnel','generic-disconnect','ordinary-remove','ordinary-disconnect','ordinary-role-error','ordinary-phy-error','ordinary-role-reprobe','ordinary-unsupported-remove','ordinary-unsupported-disconnect','ordinary-unregistered-remove','ordinary-unregistered-disconnect','noop-fixed-remove','noop-fixed-disconnect')), ()),
         ('lifecycle', 'probe-mux-pm-dispatch', pm.probe_dispatch, ((),), ()),
         ('phy', 'parking', lambda r: parking_unit(r), parking_cases, ()),
