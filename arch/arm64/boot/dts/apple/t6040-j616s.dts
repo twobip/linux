@@ -826,6 +826,19 @@
 	status = "okay";
 };
 
+/*
+ * The loaded GPU firmware keeps running across system sleep. Like the Neo's
+ * GFX domain, these domains must not be switched off while that image lives.
+ * The PMP report vote is still owned by the GPU consumer.
+ */
+&ps_afr {
+	apple,always-on;
+};
+
+&ps_gfx {
+	apple,always-on;
+};
+
 /* The loader fills the operating points, calibration and all six memory regions. */
 &gfx_mbox {
 	status = "okay";
