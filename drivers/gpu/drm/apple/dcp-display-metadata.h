@@ -22,6 +22,6 @@ const struct drm_edid *dcp_metadata_edid(const struct dcp_display_metadata *meta
 					 const struct drm_display_mode *mode);
 
 const struct drm_edid *dcp_panel_edid(const struct dcp_display_metadata *metadata,
-				     u32 width_mm, u32 height_mm);
+				      u32 width_mm, u32 height_mm);
 
 #endif

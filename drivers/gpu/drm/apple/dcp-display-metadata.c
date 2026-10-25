@@ -208,7 +208,7 @@ const struct drm_edid *dcp_metadata_edid(const struct dcp_display_metadata *meta
  * an EDID timing, chromaticities or gamma when the panel omits those fields.
  */
 const struct drm_edid *dcp_panel_edid(const struct dcp_display_metadata *metadata,
-				     u32 width_mm, u32 height_mm)
+				      u32 width_mm, u32 height_mm)
 {
 	struct edid block = {};
 	const struct drm_edid *edid;

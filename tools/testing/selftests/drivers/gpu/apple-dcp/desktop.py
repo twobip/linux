@@ -359,7 +359,7 @@ static void dcp_modeset_fixed_fallback(struct apple_dcp *d,struct dcp_modeset_co
     return unit.replace('    return 0;\n}', tests + '    return 0;\n}')
 
 
-def panel_identity(root):
+def panel_identity(root, output=None):
     import struct
     import rate
     f = rate.parser_fixture(root)
@@ -374,7 +374,7 @@ def panel_identity(root):
     helpers = '\n'.join(block(source, name) for name in (
         'void dcp_panel_metadata_replace(', 'bool dcp_panel_metadata_current(',
         'const struct drm_edid *dcp_panel_edid_snapshot('))
-    return code + r'''
+    unit = code + r'''
 #define DCP_FIRMWARE_V_26_6_DESKTOP 5
 #define spin_lock_irqsave(p,f) do {assert(!*(p));*(p)=true;(f)=0;} while(0)
 #define spin_unlock_irqrestore(p,f) do {assert(*(p));*(p)=false;(void)(f);} while(0)
@@ -387,7 +387,7 @@ static unsigned notifications;
 static bool dcp_has_panel(struct apple_dcp *d) {return d->has_panel;}
 static void dcp_queue_hotplug(void *con) {assert(con);notifications++;}
 ''' + helpers + '\nstatic const u8 attributes[]={'+','.join(map(str,raw))+'};\n' + r'''
-int main(void)
+int main(int argc, char **argv)
 {
     struct dcp_parse_ctx ctx;
     struct dcp_display_metadata metadata;
@@ -410,6 +410,7 @@ int main(void)
     assert(bytes[18]==1 && bytes[19]==3 && bytes[21]==35 && bytes[22]==22 && bytes[23]==0xff);
     assert(bytes[54+3]==EDID_DETAIL_MONITOR_NAME && bytes[72+3]==EDID_DETAIL_MONITOR_SERIAL);
     assert(!memcmp(bytes+72+5,"12345678\n",9));
+    if(argc==2) {FILE *file=fopen(argv[1],"wb");assert(file);assert(fwrite(bytes,128,1,file)==1);fclose(file);}
     drm_edid_free(edid);
     dcp_panel_metadata_replace(&d,NULL);
     assert(!dcp_panel_metadata_current(&d,generation));
@@ -421,6 +422,8 @@ int main(void)
     return 0;
 }
 '''
+
+    return (unit, ((str(output / "desktop-panel-identity.edid"),),)) if output else unit
 
 
 def powerlog_framing(root):

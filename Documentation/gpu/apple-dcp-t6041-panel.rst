@@ -9,11 +9,15 @@ by the H17P panel. The backlight interface reports the requested target and
 ``actual_brightness`` follows accepted, completed presents. A registration
 default does not change the brightness inherited from the boot loader.
 Until a loader hint or a completed user request supplies a known level,
-``actual_brightness`` returns ``ENODATA``. Echoing the unchanged registration
+``actual_brightness`` reports the target. Echoing the unchanged registration
 value also leaves the panel alone while its level is unknown. A request for a
 different target takes control. Once a hint or completed request establishes
 the level, all targets are usable. Framebuffer unblank and core suspend
 notifications also preserve an unknown inherited level.
+The first explicit change fades from a known inherited level, or from the
+reporting target when no hint is available. Firmware reports are observations,
+not requests. After takeover they cannot replace the target, restart a fade or
+cause a brightness write. Actual readback follows accepted, completed presents.
 Ambient-light policy can use the normal backlight interface, just as a slider
 does. Requests made while blanked or suspended preserve the restore target.
 
@@ -36,3 +40,25 @@ swap watchdog and re-applies the active CRTC at fixed refresh. Either failure
 latches adaptive sync off until reboot. A transport that stops replying cannot
 be recovered by issuing another command on its busy channel; it still requires
 a reboot. Use the previous kernel entry if a panel fails qualification.
+
+Panel identity
+--------------
+
+The desktop internal panel has no external EDID service. Its ProductAttributes
+supply the monitor identity, independently of optional colorimetry or timing
+fields. The driver publishes an identity-only EDID using that product data and
+the panel dimensions from the device tree. The firmware timing list remains
+authoritative; the EDID adds no synthetic modes or color capabilities.
+
+Compact powerlog reports may be bare serialized dictionaries or carry a command
+descriptor. The receiver preserves the serialization header before handing the
+report to systemep. Only the first valid report before Linux control can seed
+takeover; later reports confirm output without changing the requested target.
+
+Desktop mode changes use the D202 and D454 adapters for this firmware's records.
+The callback table also includes physical mapping and the empty resize
+notification. An unknown callback during a modeset gets a bounded unsupported
+reply. Its enclosing command must ACK before the set fails, so a subsequent
+mode change can reuse the drained channel. Accepted atomic modeset errors are
+reported through the out-fence. A timed-out command retains its channel until
+the firmware replies; another set cannot overwrite its stack.
