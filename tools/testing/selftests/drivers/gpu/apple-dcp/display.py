@@ -46,10 +46,10 @@ int main(void)
     u32 id=1, nits;
     assert(!dcp_bl_takeover_nits(600,600000,&nits) && nits==600);
     /* A registration default must never change the loader's visible level. */
-    assert(!dcp_bl_init(&s,600,false,0,true,250)); s.fade=true;
+    assert(!dcp_bl_init(&s,600,false,0,true,300)); s.fade=true;s.preserve_inherited=true;
     assert(!s.dirty && !s.level_known && dcp_bl_actual(&s)==-ENODATA);
-    assert(!dcp_bl_request(&s,250,true,true));
-    assert(!dcp_bl_request(&s,250,false,false));
+    assert(!dcp_bl_request(&s,300,true,true));
+    assert(!dcp_bl_request(&s,300,false,false));
     assert(!s.controlled && !s.dirty && dcp_bl_actual(&s)==-ENODATA);
     assert(dcp_bl_swap_prepare(&s,&p,id,true)==-EALREADY);
     assert(!dcp_bl_request(&s,250,false,false));

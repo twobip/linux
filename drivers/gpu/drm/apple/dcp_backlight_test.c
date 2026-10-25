@@ -298,6 +298,7 @@ static void backlight_unknown_takeover_test(struct kunit *test)
 	struct dcp_backlight_present present;
 
 	KUNIT_ASSERT_EQ(test, dcp_bl_init(&state, 600, false, 0, true, 300), 0);
+	state.preserve_inherited = true;
 	KUNIT_EXPECT_EQ(test, dcp_bl_actual(&state), -ENODATA);
 	/* Core suspend/blank and resume do not turn the guess into a write. */
 	KUNIT_ASSERT_EQ(test, dcp_bl_request(&state, 300, true, true), 0);
@@ -312,15 +313,20 @@ static void backlight_unknown_takeover_test(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, dcp_bl_actual(&state), 250);
 	KUNIT_EXPECT_FALSE(test, state.dirty);
 
-	/* An explicit write, even of the default, takes ownership. */
+	/* Echoing the unknown registration value leaves the panel alone. */
 	KUNIT_ASSERT_EQ(test, dcp_bl_init(&state, 600, false, 0, true, 300), 0);
+	state.preserve_inherited = true;
 	KUNIT_ASSERT_EQ(test, dcp_bl_request(&state, 300, false, false), 0);
+	KUNIT_EXPECT_FALSE(test, state.controlled);
+	KUNIT_EXPECT_EQ(test, dcp_bl_prepare(&state, true, &present), -EALREADY);
+	/* A new target takes ownership; rejection still leaves actual unknown. */
+	KUNIT_ASSERT_EQ(test, dcp_bl_request(&state, 250, false, false), 0);
 	KUNIT_ASSERT_EQ(test, dcp_bl_prepare(&state, true, &present), 0);
 	KUNIT_EXPECT_TRUE(test, dcp_bl_complete(&state, present.sequence, false));
 	KUNIT_EXPECT_EQ(test, dcp_bl_actual(&state), -ENODATA);
 	KUNIT_ASSERT_EQ(test, dcp_bl_prepare(&state, true, &present), 0);
 	KUNIT_EXPECT_TRUE(test, dcp_bl_complete(&state, present.sequence, true));
-	KUNIT_EXPECT_EQ(test, dcp_bl_actual(&state), 300);
+	KUNIT_EXPECT_EQ(test, dcp_bl_actual(&state), 250);
 }
 
 static void backlight_fallback_same_level_test(struct kunit *test)
