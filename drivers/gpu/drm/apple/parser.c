@@ -14,6 +14,7 @@
 #endif
 
 #include "parser.h"
+#include "dcp-refresh.h"
 #include "trace.h"
 
 #define DCP_PARSE_HEADER 0xd3
@@ -723,7 +724,8 @@ static int parse_mode(struct dcp_parse_ctx *handle,
 	struct timing_color_restrictions limits = {};
 	struct dcp_color_mode unsafe_rgb8 = { .score = -1 };
 	bool have_horiz = false, have_vert = false, have_virtual = false;
-	bool duplicate_scope = false;
+	bool duplicate_scope = false, vrr_ambiguous = false;
+	unsigned int vrr_seen = 0;
 	s64 min_vrr = 0, max_vrr = 0;
 	u64 clock;
 	s64 id = -1;
@@ -773,16 +775,20 @@ static int parse_mode(struct dcp_parse_ctx *handle,
 		else if (!strcmp(key, "HorizontalAttributes")) {
 			duplicate_scope |= have_horiz;
 			have_horiz = true;
-			ret = parse_dimension(it.handle, &horiz, external_sdr);
+			ret = parse_dimension(it.handle, &horiz, external_sdr || internal);
 		} else if (!strcmp(key, "VerticalAttributes")) {
 			duplicate_scope |= have_vert;
 			have_vert = true;
-			ret = parse_dimension(it.handle, &vert, external_sdr);
-		} else if (!strcmp(key, "MinimumVariableRefreshRate"))
+			ret = parse_dimension(it.handle, &vert, external_sdr || internal);
+		} else if (!strcmp(key, "MinimumVariableRefreshRate")) {
+			vrr_ambiguous |= !!(vrr_seen & 1);
+			vrr_seen |= 1;
 			ret = parse_int_bound(it.handle, &min_vrr, 0, U32_MAX);
-		else if (!strcmp(key, "MaximumVariableRefreshRate"))
+		} else if (!strcmp(key, "MaximumVariableRefreshRate")) {
+			vrr_ambiguous |= !!(vrr_seen & 2);
+			vrr_seen |= 2;
 			ret = parse_int_bound(it.handle, &max_vrr, 0, U32_MAX);
-		else if (!strcmp(key, "ColorModes"))
+		} else if (!strcmp(key, "ColorModes"))
 			ret = parse_color_modes(it.handle, out, external_sdr, &limits,
 					handle->automatic_1080p180_rgb8 ?
 					&unsafe_rgb8 : NULL);
@@ -869,27 +875,11 @@ static int parse_mode(struct dcp_parse_ctx *handle,
 	if (is_virtual)
 		return -EINVAL;
 
-	/*
-	 * An internal ProMotion panel carries no EDID or DisplayID, so DCP
-	 * reports no adaptive-sync range for it. Assume the ProMotion floor of
-	 * 24 Hz up to whatever rate the mode itself advertises.
-	 */
-	if (internal && vert.precise_sync_rate >> 16 == 120) {
-		out->min_vrr = 24 << 16;
-		out->max_vrr = vert.precise_sync_rate;
-		out->vrr = true;
-	}
-
-	/*
-	 * Refresh rates are reported by DCP as 16.16 fixed-point Hz.
-	 * External H17P skips adaptive-sync programming: keep the fixed timing
-	 * available, but do not advertise its sink VRR range as driver support.
-	 */
-	if (!external_sdr && min_vrr && max_vrr > min_vrr) {
-		out->min_vrr = min_vrr;
-		out->max_vrr = max_vrr;
-		out->vrr = true;
-	}
+	/* External H17P keeps fixed timings without adaptive-sync support. */
+	if (!external_sdr && !vrr_ambiguous)
+		out->vrr = dcp_refresh_range(vert.precise_sync_rate, min_vrr,
+					     max_vrr, internal,
+					     &out->min_vrr, &out->max_vrr);
 
 	clock = calculate_clock(&horiz, &vert);
 	if (!clock || clock > INT_MAX)
@@ -918,7 +908,8 @@ static int parse_mode(struct dcp_parse_ctx *handle,
 		.height_mm = height_mm,
 	};
 
-	if (external_sdr && horiz.sync_polarity >= 0 && vert.sync_polarity >= 0)
+	if ((external_sdr || internal) && horiz.sync_polarity >= 0 &&
+	    vert.sync_polarity >= 0)
 		mode->flags = (horiz.sync_polarity ? DRM_MODE_FLAG_PHSYNC : DRM_MODE_FLAG_NHSYNC) |
 			      (vert.sync_polarity ? DRM_MODE_FLAG_PVSYNC : DRM_MODE_FLAG_NVSYNC);
 	out->metadata_timing_valid = external_sdr && !out->automatic_rgb8_quirk &&

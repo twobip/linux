@@ -501,6 +501,41 @@ static void backlight_fade_blank_test(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, dcp_bl_effective(&state), 400U);
 }
 
+static void backlight_desktop_swap_test(struct kunit *test)
+{
+	struct dcp_backlight_state state;
+	struct dcp_backlight_swap swap = {};
+
+	KUNIT_ASSERT_EQ(test, dcp_bl_init(&state, 600, true, 300, false, 0), 0);
+	state.fade = true;
+	KUNIT_ASSERT_EQ(test, dcp_bl_request(&state, 600, false, false), 0);
+	KUNIT_EXPECT_TRUE(test, dcp_bl_fade_step(&state, 125, 250));
+	KUNIT_EXPECT_EQ(test, state.level, 450U);
+	KUNIT_ASSERT_EQ(test, dcp_bl_swap_prepare(&state, &swap, 42, true), 0);
+	/* A completion alone must not publish an unaccepted panel level. */
+	KUNIT_EXPECT_FALSE(test, dcp_bl_swap_finish(&state, &swap, 42, false, true));
+	KUNIT_EXPECT_EQ(test, state.actual, 300U);
+	KUNIT_EXPECT_FALSE(test, dcp_bl_swap_finish(&state, &swap, 41, true, true));
+	KUNIT_EXPECT_TRUE(test, dcp_bl_swap_finish(&state, &swap, 42, true, true));
+	KUNIT_EXPECT_EQ(test, state.actual, 450U);
+	KUNIT_EXPECT_FALSE(test, dcp_bl_swap_finish(&state, &swap, 42, true, false));
+	KUNIT_EXPECT_FALSE(test, dcp_bl_fade_step(&state, 250, 250));
+	KUNIT_ASSERT_EQ(test, dcp_bl_swap_prepare(&state, &swap, 43, true), 0);
+	KUNIT_EXPECT_TRUE(test, dcp_bl_swap_finish(&state, &swap, 43, true, false));
+	KUNIT_EXPECT_EQ(test, state.actual, 450U);
+	KUNIT_EXPECT_EQ(test, dcp_bl_retry_delay(&state), 100U);
+	KUNIT_ASSERT_EQ(test, dcp_bl_swap_prepare(&state, &swap, 44, true), 0);
+	KUNIT_EXPECT_FALSE(test, dcp_bl_swap_finish(&state, &swap, 44, true, true));
+	KUNIT_EXPECT_TRUE(test, dcp_bl_swap_finish(&state, &swap, 44, false, true));
+	KUNIT_EXPECT_EQ(test, state.actual, 600U);
+	/* A lit zero is a valid request, with the same fade as the Neo. */
+	KUNIT_ASSERT_EQ(test, dcp_bl_request(&state, 0, false, false), 0);
+	KUNIT_EXPECT_TRUE(test, dcp_bl_fade_step(&state, 125, 250));
+	KUNIT_EXPECT_EQ(test, state.level, 300U);
+	KUNIT_EXPECT_FALSE(test, dcp_bl_fade_step(&state, 250, 250));
+	KUNIT_EXPECT_EQ(test, state.level, 0U);
+}
+
 static struct kunit_case backlight_cases[] = {
 	KUNIT_CASE(backlight_millinits_takeover_test),
 	KUNIT_CASE(backlight_takeover_test),
@@ -515,6 +550,7 @@ static struct kunit_case backlight_cases[] = {
 	KUNIT_CASE(backlight_fallback_test),
 	KUNIT_CASE(backlight_fallback_same_level_test),
 	KUNIT_CASE(backlight_seed_known_test),
+	KUNIT_CASE(backlight_desktop_swap_test),
 	KUNIT_CASE(backlight_fade_test),
 	KUNIT_CASE(backlight_fade_restart_test),
 	KUNIT_CASE(backlight_fade_blank_test),

@@ -48,6 +48,8 @@ def parser_fixture(root):
     metadata = block(metadata, 'struct dcp_display_metadata {') + ';\n'
     header = (base / 'parser.h').read_text()
     header = header[header.index('struct apple_dcp;'):header.index('int parse(')]
+    refresh = (base / 'dcp-refresh.h').read_text().replace('#include <linux/types.h>', '')
+    header = refresh + '\n' + header
     edid_header = (root / 'include/drm/drm_edid.h').read_text()
     edid_header = edid_header[edid_header.index('#define EDID_LENGTH'):edid_header.index('/* EDID matching */')]
     builder = (base / 'dcp-display-metadata.c').read_text()
