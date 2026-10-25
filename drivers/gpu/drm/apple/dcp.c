@@ -1954,21 +1954,28 @@ static int dcp_desktop_dyn_route_select_locked(struct apple_dcp *dcp)
 	return 0;
 }
 
-static void dcp_desktop_dyn_route_release_locked(struct apple_dcp *dcp)
+static int dcp_desktop_dyn_route_release_locked(struct apple_dcp *dcp)
 {
 	struct dcp_desktop_state *d = dcp->desktop;
 	int i = d->dyn_active;
+	int ret;
 
 	lockdep_assert_held(&dcp->hpd_mutex);
 	if (!d->ndyn || i < 0)
-		return;
+		return 0;
+	/* A failed link-off still owns its PHY and crossbar. */
+	ret = phy_power_off(d->dyn_phy[i]);
+	if (ret) {
+		dev_warn(dcp->dev, "Type-C port %u: DP PHY release failed: %d\n", i, ret);
+		return ret;
+	}
+	phy_exit(d->dyn_phy[i]);
+	mux_control_deselect(d->dyn_xbar[i]);
 	d->dyn_active = -1;
 	dcp->phy = NULL;
 	dcp->xbar = NULL;
-	phy_power_off(d->dyn_phy[i]);
-	phy_exit(d->dyn_phy[i]);
-	mux_control_deselect(d->dyn_xbar[i]);
 	dev_dbg(dcp->dev, "Type-C port %u released\n", i);
+	return 0;
 }
 
 /* Unbind: a selected route holds its crossbar and its powered PHY. */
@@ -2069,8 +2076,12 @@ static int dcp_desktop_dptx_disconnect_oob(struct apple_dcp *dcp, u32 port)
 			dptxport_set_hpd(dcp->dptxport[port].service, false);
 	}
 	ret = dcp_dptx_disconnect(dcp, port);
+	if (ret)
+		return ret;
 	scoped_guard(mutex, &dcp->hpd_mutex)
-		dcp_desktop_dyn_route_release_locked(dcp);
+		ret = dcp_desktop_dyn_route_release_locked(dcp);
+	if (ret)
+		return ret;
 	if (!dcp->main_display)
 		dcp->desktop->ext_pipe_off = true;
 	return ret;
