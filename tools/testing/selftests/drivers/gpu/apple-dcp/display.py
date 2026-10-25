@@ -103,14 +103,14 @@ def modes(root):
     checks = []
     blobs = []
 
-    def case(elements, expected, ranges=None):
+    def case(elements, expected, ranges=None, desktop=True):
         raw = bytearray(struct.pack('<I', 0xd3))
         f['wire'](elements, raw)
         i = len(blobs)
         blobs.append('static const unsigned char b%u[]={%s};' %
                      (i, ','.join(map(str, raw))))
         check = (f'{{ struct dcp_parse_ctx c; unsigned n=99; '
-                 f'assert(!parse(b{i},sizeof(b{i}),&c)); '
+                 f'assert(!parse(b{i},sizeof(b{i}),&c)); c.zero_vrr_range_fallback={int(desktop)}; '
                  'struct dcp_display_mode *m=enumerate_modes(&c,&n,355,230,0,true,false); '
                  f'assert(!IS_ERR(m) && n=={len(expected)});')
         for j, hz in enumerate(expected):
@@ -145,6 +145,8 @@ def modes(root):
                           (24<<16,144<<16,False), (120<<16,120<<16,False)):
         m=copy.deepcopy(supported[0]); m['MinimumVariableRefreshRate']=lo; m['MaximumVariableRefreshRate']=hi
         case([m],[120],[(lo or 24<<16,hi or 120<<16) if valid else (0,0)])
+    m=copy.deepcopy(supported[0]);m['MinimumVariableRefreshRate']=0;m['MaximumVariableRefreshRate']=0
+    case([m],[120],[(0,0)],desktop=False)
     for key in ('MinimumVariableRefreshRate', 'MaximumVariableRefreshRate'):
         m=copy.deepcopy(supported[0]);m[key]=0
         case([m],[120],[(0,0)])

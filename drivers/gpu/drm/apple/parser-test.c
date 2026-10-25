@@ -448,7 +448,8 @@ static void parser_vrr_empty_range(struct kunit *test)
 	struct parser_record record = valid_record(7, 10);
 	struct dcp_display_mode *modes;
 	struct parser_blob *blob;
-	unsigned int count;
+	unsigned int count, desktop;
+	struct dcp_parse_ctx ctx;
 
 	/* Desktop firmware can publish both fields as zero placeholders. */
 	record.rate = 120 << 16;
@@ -459,9 +460,9 @@ static void parser_vrr_empty_range(struct kunit *test)
 	modes = parse_blob(blob, &count, 0, true);
 	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, modes);
 	KUNIT_ASSERT_EQ(test, count, 1U);
-	KUNIT_EXPECT_TRUE(test, modes[0].vrr);
-	KUNIT_EXPECT_EQ(test, modes[0].min_vrr, 24U << 16);
-	KUNIT_EXPECT_EQ(test, modes[0].max_vrr, 120U << 16);
+	KUNIT_EXPECT_FALSE(test, modes[0].vrr);
+	KUNIT_EXPECT_EQ(test, modes[0].min_vrr, 0U);
+	KUNIT_EXPECT_EQ(test, modes[0].max_vrr, 0U);
 	kfree(modes);
 
 	/* A display without the internal ProMotion policy stays fixed. */
@@ -472,6 +473,26 @@ static void parser_vrr_empty_range(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, modes[0].min_vrr, 0U);
 	KUNIT_EXPECT_EQ(test, modes[0].max_vrr, 0U);
 	kfree(modes);
+	/* The catalog owner enables this convention only for desktop firmware. */
+	for (desktop = 0; desktop < 2; desktop++) {
+		struct apple_dcp *dcp = kunit_kzalloc(test, sizeof(*dcp), GFP_KERNEL);
+		u64 generation;
+
+		KUNIT_ASSERT_NOT_NULL(test, dcp);
+		parser_modes_init(dcp);
+		dcp->fw_compat = desktop ? DCP_FIRMWARE_V_26_6_DESKTOP :
+			DCP_FIRMWARE_V_13_5;
+		dcp->fixed_connector_type = DRM_MODE_CONNECTOR_eDP;
+		KUNIT_ASSERT_EQ(test, parse(blob->data, blob->size, &ctx), 0);
+		ctx.dcp = &parser_dcp;
+		generation = dcp_modes_transfer_begin(dcp);
+		KUNIT_ASSERT_EQ(test, dcp_modes_replace(dcp, &ctx, generation), 0);
+		KUNIT_ASSERT_EQ(test, dcp->nr_modes, 1U);
+		KUNIT_EXPECT_EQ(test, dcp->modes[0].vrr, !!desktop);
+		KUNIT_EXPECT_EQ(test, dcp->modes[0].min_vrr, desktop ? 24U << 16 : 0U);
+		KUNIT_EXPECT_EQ(test, dcp->modes[0].max_vrr, desktop ? 120U << 16 : 0U);
+		kfree(dcp->modes);
+	}
 }
 
 static void parser_replacement(struct kunit *test)
