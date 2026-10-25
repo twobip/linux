@@ -30,6 +30,7 @@ import desktop
 import rate
 import boot
 import m4
+import display
 
 
 def parking_unit(root):
@@ -41,7 +42,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=Path, default=Path(__file__).resolve().parents[6])
     parser.add_argument('--output', type=Path, help='retain generated C, commands and results here')
-    parser.add_argument('--group', choices=('all', 'edid', 'rate', 'phy', 'lifecycle', 'boot', 'quiesce', 'm4'), default='all')
+    parser.add_argument('--group', choices=('all', 'edid', 'rate', 'phy', 'lifecycle', 'boot', 'quiesce', 'm4', 'display'), default='all')
     args = parser.parse_args()
     root = args.source.resolve()
     output = args.output or Path(tempfile.mkdtemp(prefix='apple-dcp-selftest-'))
@@ -53,6 +54,10 @@ def main():
                                        'failed-flip-return', 'live-park'))
     tests = [
         ('lifecycle', 'desktop-modeset-unmap', desktop.modeset_unmap, ((),), ()),
+        ('display', 'panel-backlight-ramp', display.backlight, ((),), ()),
+        ('display', 'panel-mode-catalog', display.modes, ((),), ()),
+        ('display', 'panel-refresh-range', display.refresh, ((),), ()),
+        ('display', 'panel-adaptive-fallback', display.adaptive, ((),), ()),
         ('m4', 'm4-wire-golden', lambda r: m4.golden_check(r, output), (), ()),
         ('m4', 'm4-protocol', m4.protocol, ((),), ('-Wno-unused-function', '-Wno-unused-const-variable')),
         ('m4', 'm4-common-plane', m4.plane, ((),), ('-Wno-unused-function', '-Wno-unused-const-variable')),

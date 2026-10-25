@@ -909,9 +909,22 @@ VISIBLE_IF_KUNIT void dcp_swap_watchdog(struct work_struct *work)
 		container_of(to_delayed_work(work), struct apple_dcp,
 			     swap_watchdog_wq);
 
+	if (dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP &&
+	    (!READ_ONCE(dcp->desktop->present_pending) ||
+	     time_before(jiffies, dcp->swap_watchdog_deadline)))
+		return;
+
 	if (!iomfb_retire_dropped_present_h17p(dcp))
 		return;
 
+	if (dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP &&
+	    READ_ONCE(dcp->vrr_enabled)) {
+		WRITE_ONCE(dcp->desktop->vrr_failed, true);
+		WRITE_ONCE(dcp->vrr_enabled, false);
+		dcp_backlight_desktop_finish(dcp,
+				READ_ONCE(dcp->desktop->present_id), true, false);
+		dev_warn(dcp->dev, "adaptive swap timed out, restoring fixed refresh\n");
+	}
 	dev_warn(dcp->dev, "swap not completed, retraining the display\n");
 	dcp_mode_invalidate(&dcp->mode_state);
 	dcp_drm_crtc_vblank(dcp->crtc);
@@ -922,7 +935,9 @@ VISIBLE_IF_KUNIT void dcp_swap_watchdog(struct work_struct *work)
 
 void dcp_swap_watchdog_arm(struct apple_dcp *dcp)
 {
-	if (dcp_is_typec_output(dcp)) {
+	if (dcp_is_typec_output(dcp) ||
+	    (dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP &&
+	     READ_ONCE(dcp->vrr_enabled))) {
 		dcp->swap_watchdog_deadline = jiffies +
 			msecs_to_jiffies(DCP_SWAP_WATCHDOG_MS);
 		mod_delayed_work(system_dfl_wq, &dcp->swap_watchdog_wq,
