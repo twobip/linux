@@ -8,6 +8,10 @@ integer nits from zero to the panel ceiling, with the same 250 ms fade used
 by the H17P panel. The backlight interface reports the requested target and
 ``actual_brightness`` follows accepted, completed presents. A registration
 default does not change the brightness inherited from the boot loader.
+Until a loader hint or a completed user request supplies a known level,
+``actual_brightness`` returns ``ENODATA``. This prevents brightness save/restore
+services from treating the registration default as a measured panel level.
+Framebuffer unblank and core suspend notifications also leave that level alone.
 Ambient-light policy can use the normal backlight interface, just as a slider
 does. Requests made while blanked or suspended preserve the restore target.
 

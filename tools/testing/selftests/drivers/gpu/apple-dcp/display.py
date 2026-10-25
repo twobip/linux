@@ -47,14 +47,17 @@ int main(void)
     assert(!dcp_bl_takeover_nits(600,600000,&nits) && nits==600);
     /* A registration default must never change the loader's visible level. */
     assert(!dcp_bl_init(&s,600,false,0,true,250)); s.fade=true;
-    assert(!s.dirty && !s.level_known);
+    assert(!s.dirty && !s.level_known && dcp_bl_actual(&s)==-ENODATA);
+    assert(!dcp_bl_request(&s,250,true,true));
+    assert(!dcp_bl_request(&s,250,false,false));
+    assert(!s.controlled && !s.dirty && dcp_bl_actual(&s)==-ENODATA);
     assert(dcp_bl_swap_prepare(&s,&p,id,true)==-EALREADY);
     assert(!dcp_bl_request(&s,250,false,false));
     assert(!s.fading && s.dirty);
     assert(dcp_bl_swap_prepare(&s,&p,id,false)==-ENODATA);
     assert(!dcp_bl_swap_prepare(&s,&p,id,true));
     completed(&s,&p,id++,true);
-    assert(s.actual==250 && s.level_known);
+    assert(s.actual==250 && s.level_known && dcp_bl_actual(&s)==250);
     assert(!dcp_bl_seed(&s,300));
     /* Same state as a slider request or an ALS retarget through backlight. */
     assert(!dcp_bl_request(&s,600,false,false) && s.fading);
@@ -309,11 +312,14 @@ def takeover(root):
 #define spin_unlock_irqrestore(p,f) do {assert(*(p));*(p)=false;(void)(f);} while(0)
 struct apple_dcp {
     int fw_compat;
-    struct {u32 maximum;} brightness;
+    struct {u32 maximum;void *bl_dev;} brightness;
     struct {bool lock;struct dcp_backlight_state state;} backlight;
     struct {bool inherited_brightness_valid;u32 inherited_brightness;} *desktop;
 };
-static unsigned legacy;
+#define BACKLIGHT_UPDATE_HOTKEY 1
+static unsigned legacy,notifications;
+static void backlight_force_update(void *bd,int reason)
+{assert(bd && reason==BACKLIGHT_UPDATE_HOTKEY);notifications++;}
 bool dcp_backlight_active(struct apple_dcp *d) {return d->fw_compat==1 && d->backlight.state.ready;}
 static int iomfb_configure_backlight_h17p(struct apple_dcp *d,u32 max,bool valid,u32 nits,bool fallback,u32 guessed)
 {assert(max==600 && valid && nits==100 && !fallback && !guessed);legacy++;return 0;}
@@ -327,7 +333,13 @@ int main(void) {
     saved.inherited_brightness_valid=false;
     assert(dcp_backlight_takeover(&d,1300000)==-ERANGE && !saved.inherited_brightness_valid);
     assert(!dcp_backlight_takeover(&d,700000) && saved.inherited_brightness==600);
-    d.backlight.state.ready=true; saved.inherited_brightness_valid=false;
+    assert(!dcp_bl_init(&d.backlight.state,600,false,0,true,300));
+    d.brightness.bl_dev=&d;saved.inherited_brightness_valid=false;
+    assert(!dcp_backlight_takeover(&d,100000) && saved.inherited_brightness_valid);
+    assert(dcp_bl_actual(&d.backlight.state)==100 && !d.backlight.state.dirty && notifications==1);
+    assert(!dcp_backlight_takeover(&d,200000) && d.backlight.state.target==100 && notifications==1);
+    saved.inherited_brightness_valid=false;
+    assert(!dcp_bl_request(&d.backlight.state,250,false,false));
     assert(!dcp_backlight_takeover(&d,100000) && !saved.inherited_brightness_valid);
     d.fw_compat=1;d.backlight.state.ready=false;
     assert(!dcp_backlight_takeover(&d,100000) && legacy==1);

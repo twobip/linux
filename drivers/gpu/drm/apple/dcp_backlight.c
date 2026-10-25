@@ -128,15 +128,20 @@ int dcp_backlight_takeover(struct apple_dcp *dcp, u32 millinits)
 
 	if (dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP) {
 		unsigned long flags;
+		bool seeded = false;
 
-		/* Freeze the first hint before publishing the class device. */
+		/* Accept the first hint until a user request takes ownership. */
 		spin_lock_irqsave(&dcp->backlight.lock, flags);
-		if (!dcp->backlight.state.ready &&
-		    !dcp->desktop->inherited_brightness_valid) {
+		if (!dcp->desktop->inherited_brightness_valid &&
+		    !dcp->backlight.state.controlled) {
 			dcp->desktop->inherited_brightness = nits;
 			dcp->desktop->inherited_brightness_valid = true;
+			if (dcp->backlight.state.ready)
+				seeded = dcp_bl_seed(&dcp->backlight.state, nits);
 		}
 		spin_unlock_irqrestore(&dcp->backlight.lock, flags);
+		if (seeded && READ_ONCE(dcp->brightness.bl_dev))
+			backlight_force_update(dcp->brightness.bl_dev, BACKLIGHT_UPDATE_HOTKEY);
 		return 0;
 	}
 
@@ -148,14 +153,17 @@ static int dcp_get_brightness(struct backlight_device *bd)
 {
 	struct apple_dcp *dcp = bl_get_data(bd);
 	unsigned long flags;
-	u32 actual;
+	int actual;
 
 	if (READ_ONCE(dcp->quiescing))
 		return -ENODEV;
 
 	if (dcp_backlight_active(dcp) || dcp_backlight_desktop(dcp)) {
 		spin_lock_irqsave(&dcp->backlight.lock, flags);
-		actual = dcp->backlight.state.actual;
+		if (dcp_backlight_desktop(dcp))
+			actual = dcp_bl_actual(&dcp->backlight.state);
+		else
+			actual = dcp->backlight.state.actual;
 		spin_unlock_irqrestore(&dcp->backlight.lock, flags);
 		return actual;
 	}
@@ -627,6 +635,12 @@ static bool dcp_backlight_controls_device(struct backlight_device *bd,
 					  struct device *display_dev)
 {
 	struct apple_dcp *dcp = bl_get_data(bd);
+
+	/* A framebuffer's first unblank must not apply the reporting default. */
+	if (dcp_backlight_desktop(dcp) &&
+	    !READ_ONCE(dcp->backlight.state.level_known) &&
+	    !READ_ONCE(dcp->backlight.state.controlled))
+		return false;
 
 	return !display_dev || display_dev == dcp->dev ||
 		(dcp->crtc && display_dev == dcp->crtc->base.dev->dev);
