@@ -1515,7 +1515,7 @@ static const struct phy_ops t6040_dp_phy_ops = {
 /* ---- Type-C mode switch: the Type-C controller asks for DP on a USB-C port ---- */
 
 static int t6040_dp_mux_update(struct t6040_usb2_phy *tphy,
-				struct typec_mux_state *state)
+			       struct typec_mux_state *state)
 {
 	bool dp = state->alt && state->alt->svid == USB_TYPEC_DP_SID;
 	bool alt = dp && (state->mode == TYPEC_DP_STATE_C ||
@@ -1539,10 +1539,10 @@ static int t6040_dp_mux_update(struct t6040_usb2_phy *tphy,
 		return -ETIMEDOUT;
 	}
 	if (dp && (!alt || !tphy->dp_ok || !tphy->usb3_ok))
-		return -ENOTSUPP;
+		return -ENODEV;
 	if (!dp && (state->alt || (state->mode != TYPEC_STATE_USB &&
 				  state->mode != TYPEC_STATE_SAFE)))
-		return -ENOTSUPP;
+		return -ENODEV;
 
 	tphy->dp_alt = alt;
 	tphy->dp_flip = flip;

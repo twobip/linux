@@ -706,8 +706,8 @@ static void cd321x_held_mux_other_failure_test(struct kunit *test)
 static void cd321x_display_taken_test(struct kunit *test)
 {
 	/* Unsupported DP assignments must not prevent the USB role from starting. */
-	KUNIT_EXPECT_TRUE(test, cd321x_display_unavailable(-ENOTSUPP, true));
-	KUNIT_EXPECT_TRUE(test, cd321x_display_unavailable(-ENOTSUPP, false));
+	KUNIT_EXPECT_TRUE(test, cd321x_display_unavailable(-ENODEV, true));
+	KUNIT_EXPECT_TRUE(test, cd321x_display_unavailable(-ENODEV, false));
 	/* T8140/T8142: a PHY mid-transition or a pending SAFE state is retried. */
 	KUNIT_EXPECT_TRUE(test, cd321x_display_unavailable(-ENOSPC, true));
 	KUNIT_EXPECT_FALSE(test, cd321x_display_unavailable(-EBUSY, true));

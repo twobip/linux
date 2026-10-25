@@ -105,7 +105,7 @@ static void t6040_test_assignments(struct kunit *test)
 {
 	struct t6040_test *ctx = test->priv;
 
-	KUNIT_EXPECT_EQ(test, t6040_test_mux(ctx, TYPEC_DP_STATE_D, true), -ENOTSUPP);
+	KUNIT_EXPECT_EQ(test, t6040_test_mux(ctx, TYPEC_DP_STATE_D, true), -ENODEV);
 	KUNIT_EXPECT_FALSE(test, ctx->tphy.dp_alt);
 	KUNIT_EXPECT_EQ(test, t6040_test_mux(ctx, TYPEC_DP_STATE_C, true), 0);
 	KUNIT_EXPECT_TRUE(test, apple_t6040_phy_dp_alt(&ctx->dp));
@@ -120,7 +120,7 @@ static void t6040_test_missing_usb3_is_not_hdmi(struct kunit *test)
 
 	ctx->tphy.usb3_ok = false;
 	KUNIT_EXPECT_FALSE(test, t6040_dp_only(&ctx->tphy));
-	KUNIT_EXPECT_EQ(test, t6040_test_mux(ctx, TYPEC_DP_STATE_C, true), -ENOTSUPP);
+	KUNIT_EXPECT_EQ(test, t6040_test_mux(ctx, TYPEC_DP_STATE_C, true), -ENODEV);
 	KUNIT_EXPECT_EQ(test, t6040_dp_power_on(&ctx->dp), -ENOLINK);
 	KUNIT_EXPECT_EQ(test, ctx->init_calls, 0U);
 }
@@ -270,4 +270,5 @@ static struct kunit_suite t6040_test_suite = {
 	.init = t6040_test_init,
 	.test_cases = t6040_test_cases,
 };
+
 kunit_test_suite(t6040_test_suite);

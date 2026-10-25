@@ -1919,8 +1919,10 @@ static int dcp_desktop_dyn_route_select_locked(struct apple_dcp *dcp)
 	int ret;
 
 	lockdep_assert_held(&dcp->hpd_mutex);
-	if (!d->ndyn || d->dyn_active >= 0)
+	if (!d->ndyn)
 		return 0;
+	if (d->dyn_active >= 0)
+		return dcp_desktop_phy_dp_alt(d->dyn_phy[d->dyn_active]) ? 0 : -EBUSY;
 	for (i = 0; i < d->ndyn; i++)
 		if (dcp_desktop_phy_dp_alt(d->dyn_phy[i]))
 			break;
