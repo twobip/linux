@@ -9,9 +9,11 @@ by the H17P panel. The backlight interface reports the requested target and
 ``actual_brightness`` follows accepted, completed presents. A registration
 default does not change the brightness inherited from the boot loader.
 Until a loader hint or a completed user request supplies a known level,
-``actual_brightness`` returns ``ENODATA``. This prevents brightness save/restore
-services from treating the registration default as a measured panel level.
-Framebuffer unblank and core suspend notifications also leave that level alone.
+``actual_brightness`` returns ``ENODATA``. Echoing the unchanged registration
+value also leaves the panel alone while its level is unknown. A request for a
+different target takes control. Once a hint or completed request establishes
+the level, all targets are usable. Framebuffer unblank and core suspend
+notifications also preserve an unknown inherited level.
 Ambient-light policy can use the normal backlight interface, just as a slider
 does. Requests made while blanked or suspended preserve the restore target.
 

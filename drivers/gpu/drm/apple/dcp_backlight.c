@@ -704,6 +704,7 @@ int dcp_backlight_register(struct apple_dcp *dcp)
 				return ret;
 			}
 			dcp->backlight.state.fade = true;
+			dcp->backlight.state.preserve_inherited = true;
 			dcp->backlight.kick = dcp_backlight_desktop_kick;
 		}
 		props.brightness = dcp->backlight.state.target;

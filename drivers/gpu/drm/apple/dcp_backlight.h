@@ -26,6 +26,8 @@ struct dcp_backlight_state {
 	u8 retries;
 	bool ready;
 	bool controlled;
+	/* An unchanged registration default cannot take over an unknown level. */
+	bool preserve_inherited;
 	bool dpms_off;
 	bool core_blank;
 	bool suspended;
@@ -147,6 +149,13 @@ static inline int dcp_bl_request(struct dcp_backlight_state *state, u32 nits,
 		return -ENODATA;
 	if (nits > state->maximum)
 		return -ERANGE;
+	/* Save/restore clients may echo the reporting default without a change. */
+	if (state->preserve_inherited && !state->controlled && !state->level_known &&
+	    state->target == nits) {
+		state->core_blank = core_blank;
+		state->suspended = suspended;
+		return 0;
+	}
 	/* Core blank/suspend notifications do not establish a panel level. */
 	if (!state->controlled && !state->level_known && state->target == nits &&
 	    (state->core_blank != core_blank || state->suspended != suspended)) {
