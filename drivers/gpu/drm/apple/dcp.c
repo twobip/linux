@@ -3053,7 +3053,7 @@ static int dcp_start_desktop_external(struct apple_dcp *dcp, u32 map)
 	if (ret)
 		return ret;
 
-	if (!dcp->phy) {
+	if (!dcp->phy && !dcp->nr_typec_routes) {
 		dev_warn(dcp->dev, "no DP PHY and no Type-C route: no display link\n");
 		return 0;
 	}

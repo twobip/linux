@@ -160,3 +160,61 @@ int main(void)
  return 0;
 }
 '''
+
+
+def startup(root):
+    source = (root / 'drivers/gpu/drm/apple/dcp.c').read_text()
+    production = block(source, 'static int dcp_start_desktop_external(')
+    return r'''
+#include <assert.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <errno.h>
+typedef uint32_t u32;
+#define IS_ENABLED(x) 0
+#define BIT(n) (1U << (n))
+#define dev_warn(...) ((void)0)
+#define dev_info(...) ((void)0)
+#define dev_err_probe(dev, ret, ...) (ret)
+enum { DPDEV_ENDPOINT=0x20, DPAV_CTRL_ENDPOINT, DPSAC_ENDPOINT, AV_ENDPOINT,
+ REMOTE_ALLOC_ENDPOINT, EPIC2C_ENDPOINT, DCP_EXPERT_ENDPOINT, EPIC25_ENDPOINT };
+struct dcp_desktop_state { unsigned graph_started; };
+struct dptx_port { bool available; };
+struct apple_dcp {
+ struct dcp_desktop_state *desktop; void *dev, *phy; unsigned nr_typec_routes;
+ struct dptx_port dptxport[1];
+};
+static bool unstable_edid;
+static unsigned dptx_starts, connect_attempts;
+static int dcp_desktop_start_ext_ep(struct apple_dcp *d, u32 map, unsigned ep, const char *name)
+{ (void)d; (void)map; (void)ep; (void)name; return 0; }
+static int dcp_desktop_start_dpavctrl(struct apple_dcp *d) { (void)d; return 0; }
+static int ibootep_init(struct apple_dcp *d) { (void)d; return 0; }
+static int dptxep_init_desktop(struct apple_dcp *d, unsigned ep)
+{ (void)ep; dptx_starts++; d->dptxport[0].available=true; return 0; }
+static int dpavservep_init(struct apple_dcp *d) { (void)d; return 0; }
+static bool dptx_service_available(struct dptx_port *p) { return p->available; }
+static int dcp_dptx_connect(struct apple_dcp *d, unsigned port)
+{
+ (void)port; connect_attempts++;
+ /* The separately tested admission wrapper refuses an unclaimed Type-C link. */
+ return d->phy ? 0 : -ENOLINK;
+}
+''' + production + r'''
+int main(void)
+{
+ struct dcp_desktop_state desktop={0};
+ struct apple_dcp dcp={.desktop=&desktop};
+ assert(!dcp_start_desktop_external(&dcp,0));
+ assert(!dptx_starts && !connect_attempts);
+ /* Route release parks ->phy at NULL. A later restart must discover DPTX. */
+ dcp.nr_typec_routes=3;
+ assert(!dcp_start_desktop_external(&dcp,0));
+ assert(dptx_starts==1 && connect_attempts==1 && dcp.dptxport[0].available);
+ /* Fixed HDMI still takes its existing startup path. */
+ dcp.nr_typec_routes=0; dcp.phy=&desktop;
+ assert(!dcp_start_desktop_external(&dcp,0));
+ assert(dptx_starts==2 && connect_attempts==2);
+ return 0;
+}
+'''
