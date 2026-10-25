@@ -1975,6 +1975,7 @@ static int dcp_desktop_dptx_disconnect_oob(struct apple_dcp *dcp, u32 port)
 	if (dcp->avep)
 		av_service_disconnect(dcp);
 	scoped_guard(mutex, &dcp->hpd_mutex) {
+		WRITE_ONCE(dcp->typec_cable_connected, false);
 		if (dptx_service_available(&dcp->dptxport[port]))
 			dptxport_set_hpd(dcp->dptxport[port].service, false);
 	}

@@ -101,6 +101,9 @@ int main(void)
  assert(!dcp_typec_phy_on(&dcp));
  dcp.nr_typec_routes=1;
  dcp.active_typec_route=&route;
+ /* A retained route at HPD-low must not admit a racing startup/reconnect. */
+ assert(dcp_typec_phy_on(&dcp)==-ENOLINK);
+ assert(!route.phy_powered);
  /* Busy is reported after all mode switches can receive their assignment. */
  assert(dcp_typec_route_finish(&mux,&state)==-ENOSPC);
  assert(!connect_calls && !port.owner);

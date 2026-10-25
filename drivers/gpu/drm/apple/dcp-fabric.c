@@ -344,6 +344,9 @@ int dcp_typec_phy_on(struct apple_dcp *dcp)
 	struct apple_dcp_typec_route *route = READ_ONCE(dcp->active_typec_route);
 
 	lockdep_assert_held(&dcp->hpd_mutex);
+	/* HPD-low closes admission before disconnect drops this lock for RPCs. */
+	if (route && !READ_ONCE(dcp->typec_cable_connected))
+		return -ENOLINK;
 	/* The initial PHY pointer permits endpoint discovery, not an idle link. */
 	if (!route && dcp->nr_typec_routes && !dcp->fixed_phy &&
 	    dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP)
