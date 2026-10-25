@@ -101,7 +101,7 @@ properties:
 
   apple,t6040-handoff-version:
     $ref: /schemas/types.yaml#/definitions/uint32
-    const: 1
+    const: 2
     description:
       Written last by the boot loader after it has filled the T6040 operating
       points, memory regions and per-chip calibration. Absent in the source DT.
@@ -122,31 +122,41 @@ properties:
     $ref: /schemas/types.yaml#/definitions/uint32
     minimum: 1
     maximum: 9
-    description: Logical base state of the frequency-relative performance table
+    description:
+      Logical base state of the frequency-relative performance table. The
+      first active state is the default policy when the ADT omits a base state.
 
   apple,perf-map-a:
     $ref: /schemas/types.yaml#/definitions/uint32-array
-    minItems: 11
-    maxItems: 11
-    description: Logical A state to ADT operating-point index
+    minItems: 16
+    maxItems: 16
+    description:
+      All 16 A selector register fields, indexing raw ADT operating points.
+      Eleven populated entries, including off, followed by five zeros.
 
   apple,perf-map-b:
     $ref: /schemas/types.yaml#/definitions/uint32-array
-    minItems: 11
-    maxItems: 11
-    description: Logical B state to ADT operating-point index
+    minItems: 16
+    maxItems: 16
+    description:
+      All 16 B selector register fields, indexing raw ADT operating points.
+      Eleven populated entries, including off, followed by five zeros.
 
   apple,perf-relative-a:
     $ref: /schemas/types.yaml#/definitions/uint32-array
-    minItems: 11
-    maxItems: 11
-    description: Per-chip relative power of each logical A state, in percent
+    minItems: 16
+    maxItems: 16
+    description:
+      Per-chip relative power of each populated A selector, in percent,
+      followed by zeros for the five unused selectors.
 
   apple,perf-relative-b:
     $ref: /schemas/types.yaml#/definitions/uint32-array
-    minItems: 11
-    maxItems: 11
-    description: Relative frequency of the logical A ladder above the base state, in percent
+    minItems: 16
+    maxItems: 16
+    description:
+      Relative frequency of the populated A ladder above the base state,
+      in percent, followed by zeros for the five unused selectors.
 
   apple,core-leak-coef:
     $ref: /schemas/types.yaml#/definitions/uint32-array
