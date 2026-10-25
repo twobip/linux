@@ -11,6 +11,7 @@ def brightness_takeover(root):
     prefix = prefix.replace('static inline ', 'static inline __attribute__((unused)) ')
     functions = '\n'.join(block(source, marker) for marker in (
         'static bool dcp_backlight_desktop(', 'static int dcp_get_brightness(',
+        'static void dcp_backlight_sync_hint(',
         'int dcp_backlight_register(', 'static int dcp_set_brightness(',
         'static bool dcp_backlight_controls_device('))
     return prefix + r'''
@@ -33,7 +34,7 @@ def brightness_takeover(root):
 #define spin_unlock_irqrestore(p,f) do {assert(*(p));*(p)=false;(void)(f);} while(0)
 struct device {int unused;};
 struct backlight_properties {int type,brightness,max_brightness,scale,state;};
-struct backlight_device {struct backlight_properties props;void *data;};
+struct backlight_device {struct backlight_properties props;void *data;bool ops_lock;};
 struct apple_dcp {
     int fw_compat;bool quiescing;
     struct {int iomfb_method_profile;} hw;
@@ -45,6 +46,19 @@ struct apple_dcp {
     struct device *dev;
 };
 static unsigned long jiffies;
+static bool inject_hint,inject_user;
+static void mutex_lock(bool *p)
+{
+    assert(!*p);*p=true;
+    if(inject_user) {
+        inject_user=false;
+        struct backlight_device *bd=(void *)((char *)p - offsetof(struct backlight_device,ops_lock));
+        struct apple_dcp *d=bd->data;
+        bd->props.brightness=450;
+        assert(!dcp_bl_request(&d->backlight.state,450,false,false));
+    }
+}
+static void mutex_unlock(bool *p) {assert(*p);*p=false;}
 static struct backlight_device registered;
 static const int dcp_backlight_ops;
 static void *bl_get_data(struct backlight_device *bd) {return bd->data;}
@@ -59,7 +73,9 @@ static struct backlight_device *devm_backlight_device_register(struct device *de
     const char *name,struct device *parent,void *data,const int *ops,
     const struct backlight_properties *props)
 {(void)dev;(void)name;(void)parent;assert(ops==&dcp_backlight_ops);
- registered=(struct backlight_device){.props=*props,.data=data};return &registered;}
+ registered=(struct backlight_device){.props=*props,.data=data};
+ if(inject_hint) {inject_hint=false;struct apple_dcp *d=data;assert(dcp_bl_seed(&d->backlight.state,180));}
+ return &registered;}
 static int backlight_get_brightness(struct backlight_device *bd)
 {return bd->props.state?0:bd->props.brightness;}
 static bool backlight_is_blank(struct backlight_device *bd) {return !!bd->props.state;}
@@ -98,10 +114,14 @@ int main(void)
     assert(d.backlight.state.fading && fades==1 && d.backlight.state.target==300);
     /* A real loader hint seeds registration without needing a present. */
     d.brightness.bl_dev=NULL;d.backlight.state=(struct dcp_backlight_state){0};
-    saved.inherited_brightness_valid=true;saved.inherited_brightness=180;
+    inject_hint=true;
     assert(!dcp_backlight_register(&d) && registered.props.brightness==180);
     assert(dcp_get_brightness(&registered)==180);
     assert(dcp_backlight_controls_device(&registered,NULL));
+    /* A user write racing the late-hint notification keeps its target. */
+    inject_user=true;dcp_backlight_sync_hint(&d);
+    assert(d.backlight.state.controlled && d.backlight.state.target==450);
+    assert(registered.props.brightness==450 && !registered.ops_lock);
     return 0;
 }
 '''
