@@ -101,7 +101,7 @@ impl Calibration {
 
     /// The performance maps index OPPs in ADT order, rather than sorted frequency order.
     pub(super) fn check_opps(&self, opps: &[Opp]) -> Result {
-        if opps.len() != 16 || opps.iter().any(|opp| opp.cells != 2) {
+        if opps.len() != 16 || opps[0].freq_hz != 0 || opps.iter().any(|opp| opp.cells != 2) {
             return Err(EINVAL);
         }
         for map in [&self.perf.states_a, &self.perf.states_b] {
@@ -168,6 +168,9 @@ mod tests {
             opp.freq_hz = i as u64 * 100_000_000;
         }
         assert!(chip.check_opps(&opps).is_ok());
+        opps[0].freq_hz = 100_000_000;
+        assert!(chip.check_opps(&opps).is_err());
+        opps[0].freq_hz = 0;
         assert!(chip.check_cores(&[0x3ff, 0x3ff]).is_ok());
         assert!(chip.check_cores(&[0x3ff, 0x1ff]).is_err());
         assert!(chip.check_cores(&[0xfffff]).is_err());
