@@ -3273,7 +3273,10 @@ void DCP_FW_NAME(iomfb_flush)(struct apple_dcp *dcp, struct drm_crtc *crtc, stru
 	struct DCP_FW_NAME(dcp_swap_submit_req) *req = &DCP_FW_SWAP(dcp);
 	int plane_idx, l;
 	int has_surface = 0;
+
+#if !DCP_FW_DESKTOP_26(DCP_FW_VER)
 	bool update_brightness;
+#endif
 
 	crtc_state = drm_atomic_get_new_crtc_state(commit, crtc);
 
@@ -3409,16 +3412,16 @@ void DCP_FW_NAME(iomfb_flush)(struct apple_dcp *dcp, struct drm_crtc *crtc, stru
 	/* These fields should be set together */
 	req->swap.swap_completed = req->swap.swap_enabled;
 
+#if DCP_FW_DESKTOP_26(DCP_FW_VER)
+	/* The shared ramp is encoded after swap_start, at submission time. */
+	dcp->brightness.update = false;
+#else
 	/* update brightness if changed */
 	update_brightness = dcp_has_panel(dcp) && dcp->brightness.update;
 #if DCP_FW_H17(DCP_FW_VER)
 	update_brightness = update_brightness &&
 			    dcp->hw.iomfb_method_profile == DCP_IOMFB_METHODS_H17G;
 #endif
-#if DCP_FW_DESKTOP_26(DCP_FW_VER)
-	/* The shared ramp is encoded after swap_start, at submission time. */
-	dcp->brightness.update = false;
-#else
 	if (update_brightness) {
 #if DCP_FW_LAYOUT_14_7(DCP_FW_VER)
 		req->swap.bl_update = 1;
