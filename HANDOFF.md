@@ -29,6 +29,7 @@ The hardware worker must confirm the controller's registered device ID is
 this J616s, M4 Pro/T6040, and use that explicit ID on every request with policy
 approval and the usual session, source, resource and ownership gates.
 Keep complete logs for every boot and preserve a known-good rollback kernel.
+Keep a control path available that does not depend on the port under test.
 Do not publish raw logs or machine identifiers.
 
 These checks need cables if no monitor or USB3 device is attached:
@@ -40,14 +41,15 @@ These checks need cables if no monitor or USB3 device is attached:
    Disconnect DP, reconnect that device and confirm the same speed without
    rebooting. Repeat several cycles in both orientations on each port.
 3. With a four-lane DP dock, USB2 may remain available while DP uses all four
-   high-speed lanes. After exiting DP, SuperSpeed must return. Assignment D
+   high-speed lanes. After leaving DP alt mode, SuperSpeed must return. Assignment D
    must not claim a display on this driver. USB should still enumerate.
 4. Suspend and resume with DP attached, with USB3 attached, and with empty
    ports. Also change the cable while asleep. Check hotplug and SuperSpeed
    after resume, PD/charging and MagSafe, and the internal panel.
-5. Test missing optional modules and a failed display setup. The internal
-   panel and USB must remain usable. A failed DP shutdown must retain the
-   route and leave USB2 usable rather than moving a live PIPE.
+5. With display routing unavailable or DP setup failing, the internal panel
+   and USB must remain usable. With the entire Type-C PHY module absent,
+   check that the internal panel still works; USB needs its PHY provider.
+   A failed DP shutdown must retain the route and avoid moving a live PIPE.
 
 A combined DP+USB3 two-lane test remains pending driver support. Do not count
 four-lane DP with USB2 as evidence of two-lane coexistence.
