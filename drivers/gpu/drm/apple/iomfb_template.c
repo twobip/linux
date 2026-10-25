@@ -461,8 +461,9 @@ static void dcpep_cb_swap_complete(struct apple_dcp *dcp,
 		retire = iomfb_present_complete_h17p(dcp);
 #endif
 #if DCP_FW_DESKTOP_26(DCP_FW_VER)
-	if (resp->swap_id == READ_ONCE(dcp->desktop->present_id))
-		WRITE_ONCE(dcp->desktop->present_pending, false);
+	/* Late or duplicate completions cannot retire the replacement's flip. */
+	if (!dcp_desktop_present_complete(dcp, resp->swap_id))
+		return;
 	dcp_backlight_desktop_finish(dcp, resp->swap_id, false, true);
 #endif
 	trace_iomfb_swap_complete(dcp, resp->swap_id);
@@ -1744,6 +1745,9 @@ static bool dcp_present_begin(struct apple_dcp *dcp, u32 swap_id)
 		dcp->crashed = true;
 		return false;
 	}
+#elif DCP_FW_DESKTOP_26(DCP_FW_VER)
+	WRITE_ONCE(dcp->desktop->present_id, swap_id);
+	WRITE_ONCE(dcp->desktop->present_pending, true);
 #endif
 	return true;
 }
@@ -2629,8 +2633,6 @@ static void dcp_swap_started(struct apple_dcp *dcp, void *data, void *cookie)
 		dcp_arm_retained_framebuffers(dcp, resp->swap_id);
 
 #if DCP_FW_DESKTOP_26(DCP_FW_VER)
-	WRITE_ONCE(dcp->desktop->present_id, resp->swap_id);
-	WRITE_ONCE(dcp->desktop->present_pending, true);
 	if (dcp_has_panel(dcp)) {
 		u32 nits;
 		bool have_surface = false;

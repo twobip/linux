@@ -57,6 +57,7 @@ def main():
         ('display', 'panel-mode-catalog', display.modes, ((),), ()),
         ('display', 'panel-refresh-range', display.refresh, ((),), ()),
         ('display', 'panel-adaptive-fallback', display.adaptive, ((),), ()),
+        ('display', 'panel-adaptive-watchdog', display.watchdog, ((),), ()),
         ('m4', 'm4-wire-golden', lambda r: m4.golden_check(r, output), (), ()),
         ('m4', 'm4-protocol', m4.protocol, ((),), ('-Wno-unused-function', '-Wno-unused-const-variable')),
         ('m4', 'm4-common-plane', m4.plane, ((),), ('-Wno-unused-function', '-Wno-unused-const-variable')),
