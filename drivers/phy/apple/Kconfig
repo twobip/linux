@@ -53,6 +53,17 @@ config PHY_APPLE_T6040_USB2
 	  DisplayPort consumer powers on the PHY and therefore requires
 	  platform-specific safety review.
 
+config PHY_APPLE_T6040_KUNIT_TEST
+	bool "KUnit tests for the Apple T6040 Type-C PHY" if !KUNIT_ALL_TESTS
+	depends on PHY_APPLE_T6040_USB2 && KUNIT
+	depends on PHY_APPLE_T6040_USB2=m || KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  Test USB3 and DisplayPort ownership, unsupported assignments,
+	  disconnect draining and failed DP setup without PHY hardware.
+	  Also check that a partial link start is stopped before USB3
+	  returns, and that absent optional PHYs fail lookup cleanly.
+
 config PHY_APPLE_DPTX
 	tristate "Apple DPTX PHY"
 	depends on ARCH_APPLE || COMPILE_TEST
