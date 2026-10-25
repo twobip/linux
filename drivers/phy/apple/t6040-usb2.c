@@ -1303,6 +1303,8 @@ static int t6040_dp_seq_step(struct t6040_usb2_phy *tphy, const struct atc_op *s
 	u32 v;
 	int ret;
 
+	KUNIT_STATIC_STUB_REDIRECT(t6040_dp_seq_step, tphy, s);
+
 	if (s->op == ATC_DELAY) {
 		udelay(s->value);
 		return 0;

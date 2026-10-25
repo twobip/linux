@@ -15,6 +15,8 @@ struct t6040_test {
 	unsigned int off_calls;
 	unsigned int usb_calls;
 	unsigned int pipe_calls;
+	unsigned int seq_calls;
+	unsigned int fail_at;
 };
 
 static int t6040_test_dp_init(struct t6040_usb2_phy *tphy, bool flip)
@@ -268,6 +270,40 @@ static void t6040_test_idempotent_power(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, ctx->off_calls, 1U);
 }
 
+static int t6040_test_seq_step(struct t6040_usb2_phy *tphy, const struct atc_op *op)
+{
+	struct t6040_test *ctx = container_of(tphy, struct t6040_test, tphy);
+
+	return ++ctx->seq_calls == ctx->fail_at ? -ETIMEDOUT : 0;
+}
+
+static void t6040_test_partial_link_is_stopped(struct kunit *test)
+{
+	struct t6040_test *ctx = test->priv;
+	union phy_configure_opts opts = {
+		.dp = { .set_rate = 1, .link_rate = 5400, .lanes = 4 },
+	};
+
+	KUNIT_ASSERT_EQ(test, t6040_test_mux(ctx, TYPEC_DP_STATE_C, true), 0);
+	KUNIT_ASSERT_EQ(test, t6040_dp_power_on(&ctx->dp), 0);
+	kunit_deactivate_static_stub(test, t6040_dp_set_rate);
+	kunit_activate_static_stub(test, t6040_dp_seq_step, t6040_test_seq_step);
+	ctx->fail_at = 1;
+	KUNIT_EXPECT_EQ(test, t6040_dp_configure(&ctx->dp, &opts), -ETIMEDOUT);
+	KUNIT_EXPECT_EQ(test, ctx->tphy.dp_rate, -1);
+	KUNIT_EXPECT_TRUE(test, ctx->tphy.dp_link_dirty);
+	/* A partial on must run the off sequence, even without a committed rate. */
+	ctx->fail_at = ctx->seq_calls + 1;
+	KUNIT_EXPECT_EQ(test, t6040_dp_power_off(&ctx->dp), -ETIMEDOUT);
+	KUNIT_EXPECT_TRUE(test, ctx->tphy.dp_up);
+	KUNIT_EXPECT_EQ(test, ctx->sleep_calls, 0U);
+	ctx->fail_at = 0;
+	KUNIT_ASSERT_EQ(test, t6040_dp_power_off(&ctx->dp), 0);
+	KUNIT_EXPECT_FALSE(test, ctx->tphy.dp_up);
+	KUNIT_EXPECT_FALSE(test, ctx->tphy.dp_link_dirty);
+	KUNIT_EXPECT_EQ(test, ctx->sleep_calls, 1U);
+}
+
 static struct kunit_case t6040_test_cases[] = {
 	KUNIT_CASE(t6040_test_assignments),
 	KUNIT_CASE(t6040_test_missing_usb3_is_not_hdmi),
@@ -280,6 +316,7 @@ static struct kunit_case t6040_test_cases[] = {
 	KUNIT_CASE(t6040_test_failed_init),
 	KUNIT_CASE(t6040_test_failed_stop_retains_owner),
 	KUNIT_CASE(t6040_test_idempotent_power),
+	KUNIT_CASE(t6040_test_partial_link_is_stopped),
 	{}
 };
 
