@@ -831,6 +831,8 @@ static void t6040_usb3_pipe_switch(struct t6040_usb2_phy *tphy)
 	void __iomem *ph = tphy->pipehandler;
 	u32 val;
 
+	KUNIT_STATIC_STUB_REDIRECT(t6040_usb3_pipe_switch, tphy);
+
 	/* macOS's controller reset() sets DUMMY_PHY_READY once; Linux's dwc3 does not. */
 	if (!(readl(ph + T6040_PIPEHANDLER_NONSELECTED_OVERRIDE) &
 	      T6040_PIPEHANDLER_DUMMY_PHY_READY)) {
@@ -887,16 +889,13 @@ static void t6040_usb3_pipe_park(struct t6040_usb2_phy *tphy)
  * its PIPE on the dummy PHY. A failure here leaves the port at USB2, so it is
  * logged and not returned: the USB2 PHY and the core must still come up.
  */
-static int t6040_usb3_power_on(struct phy *phy)
+static int t6040_usb3_start_locked(struct t6040_usb2_phy *tphy)
 {
-	struct t6040_usb2_phy *tphy = phy_get_drvdata(phy);
 	bool swap;
 	int ret;
 
-	guard(mutex)(&tphy->lock);
-	/* A four-lane DP assignment leaves the live USB controller on USB2. */
-	if (!tphy->usb3_ok || tphy->usb3_up || tphy->dp_alt || tphy->dp_up)
-		return 0;
+	KUNIT_STATIC_STUB_REDIRECT(t6040_usb3_start_locked, tphy);
+	lockdep_assert_held(&tphy->lock);
 
 	switch (tphy->orientation) {
 	case TYPEC_ORIENTATION_NORMAL:
@@ -933,6 +932,17 @@ sleep:
 	t6040_usb3_sleep(tphy);
 	dev_warn(tphy->dev, "USB3 PHY bring-up failed (%d), USB2 only\n", ret);
 	return 0;
+}
+
+static int t6040_usb3_power_on(struct phy *phy)
+{
+	struct t6040_usb2_phy *tphy = phy_get_drvdata(phy);
+
+	guard(mutex)(&tphy->lock);
+	/* A four-lane DP assignment leaves the live USB controller on USB2. */
+	if (!tphy->usb3_ok || tphy->usb3_up || tphy->dp_alt || tphy->dp_up)
+		return 0;
+	return t6040_usb3_start_locked(tphy);
 }
 
 /* aciophy_phy_shutdown with the lock held: lanes, coprocessor, then the CFG block. */

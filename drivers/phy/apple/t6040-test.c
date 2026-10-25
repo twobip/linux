@@ -13,6 +13,8 @@ struct t6040_test {
 	unsigned int setup_calls;
 	unsigned int sleep_calls;
 	unsigned int off_calls;
+	unsigned int usb_calls;
+	unsigned int pipe_calls;
 };
 
 static int t6040_test_dp_init(struct t6040_usb2_phy *tphy, bool flip)
@@ -45,6 +47,22 @@ static int t6040_test_rate(struct t6040_usb2_phy *tphy, int idx)
 	return ctx->off_ret;
 }
 
+static int t6040_test_usb_start(struct t6040_usb2_phy *tphy)
+{
+	struct t6040_test *ctx = container_of(tphy, struct t6040_test, tphy);
+
+	ctx->usb_calls++;
+	tphy->usb3_up = true;
+	return 0;
+}
+
+static void t6040_test_pipe_switch(struct t6040_usb2_phy *tphy)
+{
+	struct t6040_test *ctx = container_of(tphy, struct t6040_test, tphy);
+
+	ctx->pipe_calls++;
+}
+
 static int t6040_test_init(struct kunit *test)
 {
 	struct t6040_test *ctx = kunit_kzalloc(test, sizeof(*ctx), GFP_KERNEL);
@@ -65,6 +83,8 @@ static int t6040_test_init(struct kunit *test)
 	kunit_activate_static_stub(test, t6040_dp_mode_setup, t6040_test_dp_setup);
 	kunit_activate_static_stub(test, t6040_usb3_sleep, t6040_test_sleep);
 	kunit_activate_static_stub(test, t6040_dp_set_rate, t6040_test_rate);
+	kunit_activate_static_stub(test, t6040_usb3_start_locked, t6040_test_usb_start);
+	kunit_activate_static_stub(test, t6040_usb3_pipe_switch, t6040_test_pipe_switch);
 	return 0;
 }
 
@@ -164,6 +184,27 @@ static void t6040_test_disconnect_drains(struct kunit *test)
 	KUNIT_EXPECT_FALSE(test, ctx->tphy.dp_alt);
 }
 
+static void t6040_test_usb3_after_dp(struct kunit *test)
+{
+	struct t6040_test *ctx = test->priv;
+
+	KUNIT_ASSERT_EQ(test, t6040_test_mux(ctx, TYPEC_DP_STATE_C, true), 0);
+	KUNIT_ASSERT_EQ(test, t6040_usb3_power_on(&ctx->usb3), 0);
+	KUNIT_ASSERT_EQ(test, t6040_dp_power_on(&ctx->dp), 0);
+	KUNIT_EXPECT_EQ(test, ctx->usb_calls, 0U);
+	/* tipd reports the display gone and stops the USB role before SAFE. */
+	KUNIT_ASSERT_EQ(test, t6040_test_mux(ctx, TYPEC_DP_STATE_C, false), 0);
+	KUNIT_ASSERT_EQ(test, t6040_usb3_power_off(&ctx->usb3), 0);
+	KUNIT_ASSERT_EQ(test, t6040_dp_power_off(&ctx->dp), 0);
+	KUNIT_ASSERT_EQ(test, t6040_test_mux(ctx, TYPEC_STATE_USB, false), 0);
+	KUNIT_ASSERT_EQ(test, t6040_usb3_power_on(&ctx->usb3), 0);
+	KUNIT_EXPECT_TRUE(test, ctx->tphy.usb3_up);
+	KUNIT_EXPECT_EQ(test, ctx->usb_calls, 1U);
+	KUNIT_ASSERT_EQ(test, t6040_usb3_set_mode(&ctx->usb3, PHY_MODE_USB_HOST, 0), 0);
+	KUNIT_EXPECT_TRUE(test, ctx->tphy.pipe_switched);
+	KUNIT_EXPECT_EQ(test, ctx->pipe_calls, 1U);
+}
+
 static void t6040_test_failed_init(struct kunit *test)
 {
 	struct t6040_test *ctx = test->priv;
@@ -217,6 +258,7 @@ static struct kunit_case t6040_test_cases[] = {
 	KUNIT_CASE(t6040_test_live_usb_is_not_parked),
 	KUNIT_CASE(t6040_test_usb_stays_on_dummy),
 	KUNIT_CASE(t6040_test_disconnect_drains),
+	KUNIT_CASE(t6040_test_usb3_after_dp),
 	KUNIT_CASE(t6040_test_failed_init),
 	KUNIT_CASE(t6040_test_failed_stop_retains_owner),
 	KUNIT_CASE(t6040_test_idempotent_power),
