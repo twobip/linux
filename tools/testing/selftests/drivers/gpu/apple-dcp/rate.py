@@ -144,6 +144,15 @@ typedef u32 __le32;
 #define mul_u32_u32(a, b) ((u64)(u32)(a) * (u32)(b))
 #define DIV_ROUND_CLOSEST_ULL(n, d) (((n) + (d) / 2) / (d))
 #define DIV_ROUND_CLOSEST(n, d) (((n) + (d) / 2) / (d))
+#ifndef min
+#define min(a,b) ((a)<(b)?(a):(b))
+#endif
+#ifndef max
+#define max(a,b) ((a)>(b)?(a):(b))
+#endif
+#define max_t(t,a,b) max((t)(a),(t)(b))
+#define div_u64(n,d) ((n)/(d))
+#define DIV_ROUND_UP_ULL(n,d) (((u64)(n)+(d)-1)/(d))
 #define trace_iomfb_color_mode(...) ((void)0)
 #define trace_iomfb_parse_mode_fail(...) ((void)0)
 #define trace_iomfb_parse_mode_success(...) ((void)0)
@@ -638,7 +647,7 @@ static int drm_edid_connector_update(struct drm_connector *c,const struct drm_ed
 }
 static const struct drm_edid *dcp_firmware_edid(struct apple_dcp *d,u64 *generation) { (void)d; (void)generation; return ERR_PTR(-ENODATA); }
 static bool dcp_firmware_metadata_current(struct apple_dcp *d,u64 generation) { (void)d; (void)generation; return false; }
-static const struct drm_edid *dcp_panel_edid_snapshot(struct apple_dcp *d,u64 *generation) { (void)d;(void)generation;assert(!"panel identity in external fixture");return ERR_PTR(-ENODATA); }
+static const struct drm_edid *dcp_panel_edid_snapshot(struct apple_dcp *d,const struct dcp_display_mode *m,unsigned n,u64 *generation) { (void)d;(void)m;(void)n;(void)generation;assert(!"panel identity in external fixture");return ERR_PTR(-ENODATA); }
 static bool dcp_panel_metadata_current(struct apple_dcp *d,u64 generation) { (void)d;(void)generation;assert(!"panel identity in external fixture");return false; }
 static void dcp_panel_metadata_replace(struct apple_dcp *d,const struct dcp_display_metadata *m) { (void)d;(void)m;assert(!"panel identity in external receipt"); }
 

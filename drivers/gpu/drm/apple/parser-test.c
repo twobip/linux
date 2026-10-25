@@ -1316,6 +1316,19 @@ static void parser_panel_identity(struct kunit *test)
 	struct dcp_parse_ctx ctx;
 	const struct drm_edid *edid;
 	const struct edid *raw;
+	struct dcp_display_mode modes[2] = {};
+
+	modes[0].mode = (struct drm_display_mode) {
+		.clock = 540005, .hdisplay = 3456, .hsync_start = 3500,
+		.hsync_end = 3550, .htotal = 4000, .vdisplay = 2160,
+		.vsync_start = 2165, .vsync_end = 2170, .vtotal = 2250,
+		.flags = DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC,
+	};
+	modes[1] = modes[0];
+	modes[1].mode.clock = 1080005;
+	modes[1].vrr = true;
+	modes[1].min_vrr = 24U << 16;
+	modes[1].max_vrr = 120U << 16;
 
 	KUNIT_ASSERT_NOT_NULL(test, blob);
 	put_unaligned_le32(0xd3, blob->data);
@@ -1332,13 +1345,17 @@ static void parser_panel_identity(struct kunit *test)
 	KUNIT_ASSERT_EQ(test, parse(blob->data, blob->size, &ctx), 0);
 	KUNIT_ASSERT_EQ(test, parse_panel_metadata(&ctx, &metadata), 0);
 	KUNIT_EXPECT_STREQ(test, metadata.name, "Synthetic Int");
-	edid = dcp_panel_edid(&metadata, 345, 223);
+	edid = dcp_panel_edid(&metadata, modes, ARRAY_SIZE(modes), 345, 223);
 	KUNIT_ASSERT_FALSE(test, IS_ERR(edid));
 	KUNIT_EXPECT_TRUE(test, drm_edid_valid(edid));
 	raw = drm_edid_raw(edid);
 	KUNIT_EXPECT_EQ(test, le16_to_cpu(raw->product_id.product_code), 42);
 	KUNIT_EXPECT_EQ(test, le32_to_cpu(raw->product_id.serial_number), 0x12345678U);
 	KUNIT_EXPECT_EQ(test, raw->gamma, 0xff);
+	KUNIT_EXPECT_EQ(test, le16_to_cpu(raw->detailed_timings[0].pixel_clock), 54001);
+	KUNIT_EXPECT_EQ(test, raw->detailed_timings[3].data.other_data.data.range.min_vfreq, 24);
+	KUNIT_EXPECT_EQ(test, raw->detailed_timings[3].data.other_data.data.range.max_vfreq, 120);
+	KUNIT_EXPECT_EQ(test, modes[0].mode.clock, 540005);
 	drm_edid_free(edid);
 }
 

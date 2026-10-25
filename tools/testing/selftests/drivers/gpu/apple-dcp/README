@@ -173,7 +173,7 @@ completion isolation.
 These tests do not establish which timings a particular panel reports or prove
 refresh rate, flicker, brightness smoothness or adaptive-sync on hardware.
 
-Desktop panel brightness regressions also cover identity-only EDID parsing and
+Desktop panel brightness regressions also cover panel EDID parsing and
 publication from ProductAttributes without optional color data. Both bare and
 descriptor-wrapped powerlog reports pass through the production compact receiver,
 systemep handler and mNits parser. Rapid key repeats with interleaved stale and

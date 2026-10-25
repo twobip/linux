@@ -806,7 +806,9 @@ bool dcp_panel_metadata_current(struct apple_dcp *dcp, u64 generation)
 	return valid;
 }
 
-const struct drm_edid *dcp_panel_edid_snapshot(struct apple_dcp *dcp, u64 *generation)
+const struct drm_edid *dcp_panel_edid_snapshot(struct apple_dcp *dcp,
+					       const struct dcp_display_mode *modes,
+					       unsigned int count, u64 *generation)
 {
 	struct dcp_display_metadata metadata;
 	const struct drm_edid *edid;
@@ -822,7 +824,9 @@ const struct drm_edid *dcp_panel_edid_snapshot(struct apple_dcp *dcp, u64 *gener
 	spin_unlock_irqrestore(&dcp->metadata.lock, flags);
 	if (!valid)
 		return ERR_PTR(-ENODATA);
-	edid = dcp_panel_edid(&metadata, dcp->panel.width_mm, dcp->panel.height_mm);
+	/* The caller supplies the same retained catalog it is publishing. */
+	edid = dcp_panel_edid(&metadata, modes, count,
+			      dcp->panel.width_mm, dcp->panel.height_mm);
 	if (!IS_ERR(edid) && !dcp_panel_metadata_current(dcp, *generation)) {
 		drm_edid_free(edid);
 		return ERR_PTR(-ESTALE);

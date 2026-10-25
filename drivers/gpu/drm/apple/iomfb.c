@@ -1947,7 +1947,7 @@ int dcp_get_modes(struct drm_connector *connector)
 		bool panel = dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP &&
 			     dcp_has_panel(dcp);
 		const struct drm_edid *derived = nr_modes ?
-			(panel ? dcp_panel_edid_snapshot(dcp, &generation) :
+			(panel ? dcp_panel_edid_snapshot(dcp, modes, nr_modes, &generation) :
 			 dcp_firmware_edid(dcp, &generation)) : ERR_PTR(-ENODATA);
 
 		if (!IS_ERR(derived)) {

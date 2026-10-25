@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-only OR MIT
 #include <linux/err.h>
 #include <linux/kernel.h>
+#include <linux/math64.h>
 #include <linux/string.h>
 #include <drm/drm_edid.h>
 #include <drm/drm_modes.h>
 
 #include "dcp-display-metadata.h"
+#include "parser.h"
 
 static int dcp_metadata_timing(struct detailed_timing *timing,
 			       const struct drm_display_mode *mode,
@@ -203,51 +205,120 @@ const struct drm_edid *dcp_metadata_edid(const struct dcp_display_metadata *meta
 	return edid;
 }
 
+/* EDID 1.4 range offsets extend each one-byte limit by 255. */
+static int dcp_panel_range_byte(u32 limit, u8 *out, u8 *offsets, u8 flag)
+{
+	if (!limit || limit > 510)
+		return -ERANGE;
+	if (limit > 255) {
+		limit -= 255;
+		*offsets |= flag;
+	}
+	*out = limit;
+	return 0;
+}
+
 /*
- * Internal modes come from TimingElements. Supply identity without inventing
- * an EDID timing, chromaticities or gamma when the panel omits those fields.
+ * Supply one representable DCP timing and its catalog limits for EDID
+ * conformity. DRM still enumerates TimingElements, never these rounded bytes.
  */
 const struct drm_edid *dcp_panel_edid(const struct dcp_display_metadata *metadata,
+				      const struct dcp_display_mode *modes, unsigned int count,
 				      u32 width_mm, u32 height_mm)
 {
 	struct edid block = {};
+	struct dcp_display_metadata dimensions = *metadata;
+	struct detailed_non_pixel *limits = &block.detailed_timings[3].data.other_data;
+	struct detailed_data_monitor_range *range = &limits->data.range;
 	const struct drm_edid *edid;
 	char serial[14];
+	u32 min_v = U32_MAX, max_v = 0, min_h = U32_MAX, max_h = 0, clock = 0;
 	u16 manufacturer = 0;
 	u8 sum = 0;
+	bool timing = false, preferred = false;
 	int ret;
 
-	if (strnlen(metadata->manufacturer, 4) != 3 || metadata->product > U16_MAX ||
-	    !width_mm || width_mm > 2550 || !height_mm || height_mm > 2550)
+	if (!modes || !count || strnlen(metadata->manufacturer, 4) != 3 ||
+	    metadata->product > U16_MAX || !width_mm || width_mm > 2550 ||
+	    !height_mm || height_mm > 2550)
 		return ERR_PTR(-EINVAL);
 	for (unsigned int i = 0; i < 3; i++) {
 		if (metadata->manufacturer[i] < 'A' || metadata->manufacturer[i] > 'Z')
 			return ERR_PTR(-EINVAL);
 		manufacturer = manufacturer << 5 | (metadata->manufacturer[i] - '@');
 	}
+	dimensions.width_cm = DIV_ROUND_CLOSEST(width_mm, 10);
+	dimensions.height_cm = DIV_ROUND_CLOSEST(height_mm, 10);
+	for (unsigned int i = 0; i < count; i++) {
+		const struct dcp_display_mode *entry = &modes[i];
+		struct drm_display_mode mode = entry->mode;
+		struct detailed_timing candidate = {};
+		u32 low, high;
+		u32 pixels;
+
+		if (mode.clock <= 0 || mode.clock > 2550000 || mode.htotal <= 0 ||
+		    mode.htotal > 65535 || mode.vtotal <= 0 || mode.vtotal > 65535)
+			return ERR_PTR(-EINVAL);
+		pixels = (u32)mode.htotal * mode.vtotal;
+		low = div_u64((u64)mode.clock * 1000, pixels);
+		high = DIV_ROUND_UP_ULL((u64)mode.clock * 1000, pixels);
+		if (entry->vrr && entry->min_vrr && entry->min_vrr <= entry->max_vrr) {
+			low = entry->min_vrr >> 16;
+			high = DIV_ROUND_UP_ULL(entry->max_vrr, 1U << 16);
+		}
+		min_v = min(min_v, low);
+		max_v = max(max_v, high);
+		min_h = min(min_h, (u32)mode.clock / mode.htotal);
+		max_h = max(max_h, DIV_ROUND_UP_ULL((u32)mode.clock, mode.htotal));
+		clock = max_t(u32, clock, mode.clock);
+		/* The EDID base timing clock has units of 10 kHz. */
+		mode.clock = DIV_ROUND_CLOSEST(mode.clock, 10) * 10;
+		ret = dcp_metadata_timing(&candidate, &mode, &dimensions);
+		if (!ret && (!timing || (!preferred && (mode.type & DRM_MODE_TYPE_PREFERRED)))) {
+			block.detailed_timings[0] = candidate;
+			timing = true;
+			preferred = mode.type & DRM_MODE_TYPE_PREFERRED;
+		}
+	}
+	if (!timing || clock > 2550000)
+		return ERR_PTR(-ERANGE);
+
 	memcpy(block.header, "\x00\xff\xff\xff\xff\xff\xff\x00", 8);
 	block.product_id.manufacturer_name = cpu_to_be16(manufacturer);
 	block.product_id.product_code = cpu_to_le16(metadata->product);
 	block.product_id.serial_number = cpu_to_le32(metadata->serial);
 	block.version = 1;
-	block.revision = 3;
+	block.revision = 4;
 	block.input = DRM_EDID_INPUT_DIGITAL;
-	block.width_cm = DIV_ROUND_CLOSEST(width_mm, 10);
-	block.height_cm = DIV_ROUND_CLOSEST(height_mm, 10);
-	block.gamma = 0xff; /* Unspecified. */
+	block.width_cm = dimensions.width_cm;
+	block.height_cm = dimensions.height_cm;
+	block.gamma = 0xff;
+	block.features = DRM_EDID_FEATURE_PREFERRED_TIMING;
 	memset(block.standard_timings, 1, sizeof(block.standard_timings));
-	for (unsigned int i = 0; i < ARRAY_SIZE(block.detailed_timings); i++)
-		block.detailed_timings[i].data.other_data.type = 0x10 /* Dummy descriptor. */;
-	ret = dcp_metadata_text(&block.detailed_timings[0], EDID_DETAIL_MONITOR_NAME,
+	ret = dcp_metadata_text(&block.detailed_timings[1], EDID_DETAIL_MONITOR_NAME,
 				metadata->name);
 	if (ret)
 		return ERR_PTR(ret);
-	/* A zero numeric serial is a valid unspecified EDID serial, not NULL. */
 	snprintf(serial, sizeof(serial), "%08x", metadata->serial);
-	ret = dcp_metadata_text(&block.detailed_timings[1], EDID_DETAIL_MONITOR_SERIAL,
+	ret = dcp_metadata_text(&block.detailed_timings[2], EDID_DETAIL_MONITOR_SERIAL,
 				metadata->serial_text[0] ? metadata->serial_text : serial);
 	if (ret)
 		return ERR_PTR(ret);
+	limits->type = EDID_DETAIL_MONITOR_RANGE;
+	ret = dcp_panel_range_byte(min_v, &range->min_vfreq, &limits->pad2,
+				   DRM_EDID_RANGE_OFFSET_MIN_VFREQ);
+	ret = ret ?: dcp_panel_range_byte(max_v, &range->max_vfreq, &limits->pad2,
+					 DRM_EDID_RANGE_OFFSET_MAX_VFREQ);
+	ret = ret ?: dcp_panel_range_byte(min_h, &range->min_hfreq_khz, &limits->pad2,
+					 DRM_EDID_RANGE_OFFSET_MIN_HFREQ);
+	ret = ret ?: dcp_panel_range_byte(max_h, &range->max_hfreq_khz, &limits->pad2,
+					 DRM_EDID_RANGE_OFFSET_MAX_HFREQ);
+	if (ret)
+		return ERR_PTR(ret);
+	range->pixel_clock_mhz = DIV_ROUND_UP_ULL(clock, 10000);
+	range->flags = DRM_EDID_RANGE_LIMITS_ONLY_FLAG;
+	memset(&range->formula, ' ', sizeof(range->formula));
+	*((u8 *)&range->formula) = '\n';
 	for (unsigned int i = 0; i < sizeof(block) - 1; i++)
 		sum += ((const u8 *)&block)[i];
 	block.checksum = -sum;

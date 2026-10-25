@@ -46,9 +46,10 @@ Panel identity
 
 The desktop internal panel has no external EDID service. Its ProductAttributes
 supply the monitor identity, independently of optional colorimetry or timing
-fields. The driver publishes an identity-only EDID using that product data and
-the panel dimensions from the device tree. The firmware timing list remains
-authoritative; the EDID adds no synthetic modes or color capabilities.
+fields. The driver publishes an EDID using that product data, the panel dimensions
+from the device tree, and a representable DCP timing plus catalog limits.
+The EDID clock rounds to its required 10 kHz units. DRM still uses the exact
+firmware timing list; the EDID adds no synthetic modes or color capabilities.
 
 Compact powerlog reports may be bare serialized dictionaries or carry a command
 descriptor. The receiver preserves the serialization header before handing the

@@ -395,30 +395,41 @@ int main(int argc, char **argv)
     assert(!parse_panel_metadata(&ctx,&metadata));
     assert(!strcmp(metadata.manufacturer,"TST") && metadata.product==42 && metadata.serial==0x12345678);
     assert(!strcmp(metadata.name,"Synthetic Int"));
-    /* No color fields, date or EDID-representable timing is required. */
+    /* Optional color/date fields are absent; timings come from the catalog. */
     struct apple_dcp d={.fw_compat=5,.has_panel=true,.panel={345,223},.connector=&d};
     __typeof__(*d.desktop) desktop={0};d.desktop=&desktop;
+    struct dcp_display_mode modes[3]={0};
+    for(unsigned i=0;i<3;i++)modes[i].mode=(struct drm_display_mode){.clock=i==0?1080005:i==1?540005:432000,
+        .hdisplay=3456,.hsync_start=3500,.hsync_end=3550,.htotal=4000,
+        .vdisplay=2160,.vsync_start=2165,.vsync_end=2170,.vtotal=2250,
+        .flags=DRM_MODE_FLAG_PHSYNC|DRM_MODE_FLAG_PVSYNC,.type=i==0?DRM_MODE_TYPE_PREFERRED:0};
+    modes[0].vrr=true;modes[0].min_vrr=24U<<16;modes[0].max_vrr=120U<<16;
     u64 generation=99;
-    assert(IS_ERR(dcp_panel_edid_snapshot(&d,&generation)));
+    assert(IS_ERR(dcp_panel_edid_snapshot(&d,modes,3,&generation)));
     dcp_panel_metadata_replace(&d,&metadata);
     assert(notifications==1 && desktop.panel_metadata_valid);
-    const struct drm_edid *edid=dcp_panel_edid_snapshot(&d,&generation);
+    const struct drm_edid *edid=dcp_panel_edid_snapshot(&d,modes,3,&generation);
     assert(!IS_ERR(edid) && drm_edid_valid(edid) && dcp_panel_metadata_current(&d,generation));
     const u8 *bytes=(const void *)&edid->raw;
     assert(bytes[8]==0x52 && bytes[9]==0x74 && bytes[10]==42 && !bytes[11]);
     assert(bytes[12]==0x78 && bytes[13]==0x56 && bytes[14]==0x34 && bytes[15]==0x12);
-    assert(bytes[18]==1 && bytes[19]==3 && bytes[21]==35 && bytes[22]==22 && bytes[23]==0xff);
-    assert(bytes[54+3]==EDID_DETAIL_MONITOR_NAME && bytes[72+3]==EDID_DETAIL_MONITOR_SERIAL);
-    assert(!memcmp(bytes+72+5,"12345678\n",9));
+    assert(bytes[18]==1 && bytes[19]==4 && bytes[21]==35 && bytes[22]==22 && bytes[23]==0xff);
+    assert(bytes[72+3]==EDID_DETAIL_MONITOR_NAME && bytes[90+3]==EDID_DETAIL_MONITOR_SERIAL);
+    assert(!memcmp(bytes+90+5,"12345678\n",9));
     if(argc==2) {FILE *file=fopen(argv[1],"wb");assert(file);assert(fwrite(bytes,128,1,file)==1);fclose(file);}
+    assert(((unsigned)bytes[54]|(unsigned)bytes[55]<<8)==54001);
+    assert(bytes[108+3]==EDID_DETAIL_MONITOR_RANGE && bytes[108+5]==24 && bytes[108+6]==120);
+    assert(bytes[108+4] & DRM_EDID_RANGE_OFFSET_MAX_HFREQ);
+    /* The encoded timing clock rounds to 10 kHz; the DCP catalog is unchanged. */
+    assert(modes[1].mode.clock==540005 && modes[0].mode.clock==1080005);
     drm_edid_free(edid);
     dcp_panel_metadata_replace(&d,NULL);
     assert(!dcp_panel_metadata_current(&d,generation));
-    assert(IS_ERR(dcp_panel_edid_snapshot(&d,&generation)));
+    assert(IS_ERR(dcp_panel_edid_snapshot(&d,modes,3,&generation)));
     /* Another firmware/profile cannot publish a desktop panel identity. */
     d.fw_compat=2;dcp_panel_metadata_replace(&d,&metadata);
     assert(!desktop.panel_metadata_valid);
-    metadata.manufacturer[0]='?';assert(IS_ERR(dcp_panel_edid(&metadata,345,223)));
+    metadata.manufacturer[0]='?';assert(IS_ERR(dcp_panel_edid(&metadata,modes,3,345,223)));
     return 0;
 }
 '''
