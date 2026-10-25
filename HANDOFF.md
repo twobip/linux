@@ -3,12 +3,20 @@
 This branch combines the public T6041 display series with its crossbar and
 power-domain dependencies. The changes keep appledrm independent of optional
 PHY and crossbar modules and serialize USB3 versus four-lane DP ownership.
-Software validation is in progress. No hardware was accessed for this work.
+Software checks do not prove board behaviour. No hardware was accessed for
+this work.
 
 The T6040 PHY supports four-lane assignments C/E. Assignment D is rejected
 without reporting a working display, and USB remains available. Two-lane DP
 plus USB3 needs a verified T6040 programming sequence before it can be enabled.
 USB4, Thunderbolt and peripheral mode are still unsupported by this PHY.
+Automatic renegotiation from D to C/E is not implemented.
+
+Full Neo parity remains incomplete. The desktop T6041 path still uses the
+shared out-of-band connector model rather than the complete Type-C fabric.
+Multi-port isolation needs that integration and hardware proof. Failed DP
+shutdown retains ownership; bounded automatic drain/retry beyond later cable
+events also needs further work before merge.
 
 The source device tree does not yet describe J616s external display routes.
 The display series expects loader-enabled dcpext nodes, DART mappings,
@@ -17,8 +25,9 @@ not provide that handoff. Do not test with guessed firmware-memory mappings.
 
 ## Hardware checks
 
-The hardware worker must use the controller with device identity `m4pro`,
-policy approval and the usual session, source, resource and ownership gates.
+The hardware worker must confirm the controller's registered device ID is
+this J616s, M4 Pro/T6040, and use that explicit ID on every request with policy
+approval and the usual session, source, resource and ownership gates.
 Keep complete logs for every boot and preserve a known-good rollback kernel.
 Do not publish raw logs or machine identifiers.
 
