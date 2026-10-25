@@ -297,6 +297,7 @@ struct dcp_desktop_state {
 struct dcpext_scanout;
 struct dcp_hdmi;
 
+bool dcp_desktop_present_complete(struct apple_dcp *dcp, u32 id);
 bool dcp_desktop_vrr_supported(struct apple_dcp *dcp);
 int dcp_desktop_vrr_check(struct apple_dcp *dcp, struct drm_crtc_state *state);
 

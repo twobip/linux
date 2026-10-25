@@ -331,3 +331,87 @@ int main(void) {
     return 0;
 }
 '''
+
+
+def watchdog(root):
+    source=(root/'drivers/gpu/drm/apple/dcp.c').read_text()
+    production='\n'.join(block(source, marker) for marker in (
+        'bool dcp_desktop_present_complete(',
+        'VISIBLE_IF_KUNIT void dcp_swap_watchdog(',
+        'void dcp_swap_watchdog_arm(',
+        'void dcp_swap_watchdog_complete('))
+    definitions='\n'.join(line for line in source.splitlines()
+                          if line.startswith('#define DCP_SWAP_WATCHDOG_'))
+    return r'''
+#include <assert.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stddef.h>
+typedef uint32_t u32;
+#define READ_ONCE(x) (x)
+#define WRITE_ONCE(x,v) ((x)=(v))
+#define xchg(p,v) __atomic_exchange_n((p),(v),__ATOMIC_SEQ_CST)
+#define VISIBLE_IF_KUNIT
+#define DCP_FIRMWARE_V_26_6_DESKTOP 5
+#define dev_warn(...) ((void)0)
+#define container_of(p,t,m) ((t *)((char *)(p)-offsetof(t,m)))
+#define to_delayed_work(p) container_of(p,struct delayed_work,work)
+#define msecs_to_jiffies(n) (n)
+#define time_before(a,b) ((long)((a)-(b))<0)
+#define system_dfl_wq NULL
+static unsigned long jiffies;
+struct work_struct {unsigned unused;};
+struct delayed_work {struct work_struct work;};
+struct apple_dcp {
+    int fw_compat;bool vrr_enabled,typec;
+    struct {u32 present_id;bool present_pending,vrr_failed;} *desktop;
+    struct {bool valid;} mode_state;
+    struct delayed_work swap_watchdog_wq;
+    unsigned long swap_watchdog_deadline;
+    unsigned swap_watchdog_retrains;
+    void *crtc,*connector,*dev;
+};
+static unsigned scheduled,cancelled,vblanks,hotplugs,unarmed,rejected;
+static bool allow_retire=true;
+static bool iomfb_retire_dropped_present_h17p(struct apple_dcp *d) {return allow_retire;}
+static void dcp_unarm_retained_framebuffers(struct apple_dcp *d,u32 id)
+{assert(id==d->desktop->present_id);unarmed++;}
+static void dcp_backlight_desktop_finish(struct apple_dcp *d,u32 id,bool reply,bool accepted)
+{assert(id==d->desktop->present_id && reply && !accepted);rejected++;}
+static void dcp_mode_invalidate(__typeof__(((struct apple_dcp *)0)->mode_state) *m) {m->valid=false;}
+static void dcp_drm_crtc_vblank(void *c) {vblanks++;}
+static void dcp_queue_hotplug(void *c) {hotplugs++;}
+static bool dcp_is_typec_output(struct apple_dcp *d) {return d->typec;}
+static void mod_delayed_work(void *q,struct delayed_work *w,unsigned long delay)
+{assert(delay==1000);scheduled++;}
+static void cancel_delayed_work(struct delayed_work *w) {cancelled++;}
+''' + definitions + '\n' + production + r'''
+int main(void) {
+    struct apple_dcp d={.fw_compat=5,.vrr_enabled=true,.mode_state={true},.connector=(void *)1};
+    __typeof__(*d.desktop) state={.present_id=42,.present_pending=true};d.desktop=&state;
+    dcp_swap_watchdog_arm(&d);assert(scheduled==1 && d.swap_watchdog_deadline==1000);
+    jiffies=999;dcp_swap_watchdog(&d.swap_watchdog_wq.work);
+    assert(d.mode_state.valid && !hotplugs && !unarmed && state.present_pending);
+    assert(!dcp_desktop_present_complete(&d,41) && state.present_pending);
+    assert(dcp_desktop_present_complete(&d,42) && !state.present_pending);
+    assert(!dcp_desktop_present_complete(&d,42));
+    dcp_swap_watchdog_complete(&d);assert(cancelled==1);
+    jiffies=1000;dcp_swap_watchdog(&d.swap_watchdog_wq.work);assert(!hotplugs);
+    /* Expiry owns this dropped swap, retains its buffers and triggers reset. */
+    state.present_id=43;state.present_pending=true;
+    dcp_swap_watchdog(&d.swap_watchdog_wq.work);
+    assert(state.vrr_failed && !d.vrr_enabled && !state.present_pending);
+    assert(!d.mode_state.valid && hotplugs==1 && vblanks==1 && unarmed==1 && rejected==1);
+    assert(!dcp_desktop_present_complete(&d,43));
+    /* A late completion cannot finish the new fixed-refresh present. */
+    state.present_id=44;state.present_pending=true;
+    assert(!dcp_desktop_present_complete(&d,43) && state.present_pending);
+    assert(dcp_desktop_present_complete(&d,44));
+    unsigned before=scheduled;dcp_swap_watchdog_arm(&d);assert(scheduled==before);
+    /* The established external watchdog remains armed on a Type-C output. */
+    d.fw_compat=1;d.typec=true;dcp_swap_watchdog_arm(&d);assert(scheduled==before+1);
+    allow_retire=false;d.mode_state.valid=true;
+    dcp_swap_watchdog(&d.swap_watchdog_wq.work);assert(d.mode_state.valid && hotplugs==1);
+    return 0;
+}
+'''
