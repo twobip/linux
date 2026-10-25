@@ -29,6 +29,7 @@
  */
 
 #include <dt-bindings/phy/phy.h>
+#include <kunit/static_stub.h>
 #include <linux/bitfield.h>
 #include <linux/bitops.h>
 #include <linux/cleanup.h>
@@ -236,6 +237,7 @@ struct t6040_usb2_phy {
 	struct apple_rtkit *rtk;
 	struct completion app_reply;
 	enum typec_orientation orientation;
+	bool typec_port;		/* USB-C wiring, independent of USB3 probe success */
 	bool usb3_up;		/* tuned by the coprocessor this power cycle */
 	bool pipe_switched;	/* the controller's PIPE runs on this PHY */
 
@@ -243,7 +245,8 @@ struct t6040_usb2_phy {
 	struct phy *dp;
 	struct typec_mux_dev *mux;
 	bool dp_ok;
-	bool dp_up;		/* DP mode is programmed on the PHY */
+	bool dp_up;		/* DP consumer owns the common block */
+	bool dp_link_dirty;	/* link programming needs an off sequence */
 	bool dp_alt;		/* the Type-C port is in DP alt mode, pin assignment C/E */
 	bool dp_flip;		/* plug orientation reversed for the DP lanes */
 	int dp_rate;		/* link rate index of the running link sequence, -1 = off */
@@ -679,6 +682,8 @@ static void t6040_usb3_sleep(struct t6040_usb2_phy *tphy)
 {
 	void __iomem *cfg = t6040_cfg(tphy);
 
+	KUNIT_STATIC_STUB_REDIRECT(t6040_usb3_sleep, tphy);
+
 	udelay(5);
 	t6040_usb2_set32(cfg + T6040_CFG_AHB, T6040_CFG_AHB_CLK_REQ_N);
 	t6040_usb3_cfg_ack(tphy, "AHB clock release", T6040_CFG_STATUS_AHB_CLK, true);
@@ -889,7 +894,8 @@ static int t6040_usb3_power_on(struct phy *phy)
 	int ret;
 
 	guard(mutex)(&tphy->lock);
-	if (!tphy->usb3_ok || tphy->usb3_up)
+	/* A four-lane DP assignment leaves the live USB controller on USB2. */
+	if (!tphy->usb3_ok || tphy->usb3_up || tphy->dp_alt || tphy->dp_up)
 		return 0;
 
 	switch (tphy->orientation) {
@@ -972,7 +978,7 @@ static int t6040_usb3_set_mode(struct phy *phy, enum phy_mode mode, int submode)
 		return -EOPNOTSUPP;
 
 	guard(mutex)(&tphy->lock);
-	if (!tphy->usb3_up || tphy->pipe_switched)
+	if (tphy->dp_alt || tphy->dp_up || !tphy->usb3_up || tphy->pipe_switched)
 		return 0;
 	t6040_usb3_pipe_switch(tphy);
 	tphy->pipe_switched = true;
@@ -993,6 +999,9 @@ static int t6040_usb3_sw_set(struct typec_switch_dev *sw, enum typec_orientation
 	struct t6040_usb2_phy *tphy = typec_switch_get_drvdata(sw);
 
 	guard(mutex)(&tphy->lock);
+	/* Do not remap a link whose DCP consumer has not released it yet. */
+	if (tphy->dp_up && orientation != tphy->orientation)
+		return -EAGAIN;
 	tphy->orientation = orientation;
 	return 0;
 }
@@ -1151,10 +1160,10 @@ timeout:
 #undef DP_CLK_POLL
 }
 
-/* A PHY without the USB3 pieces (the HDMI converter's) only ever does DP. */
+/* Fixed HDMI wiring has no Type-C orientation switch. */
 static bool t6040_dp_only(struct t6040_usb2_phy *tphy)
 {
-	return !tphy->usb3_ok;
+	return !tphy->typec_port;
 }
 
 /* apply_tunables' generic tables: the first six of t6040_usb3_tunable_list. */
@@ -1206,6 +1215,8 @@ static int t6040_dp_phy_init(struct t6040_usb2_phy *tphy, bool flip)
 	size_t i;
 	int ret;
 
+	KUNIT_STATIC_STUB_REDIRECT(t6040_dp_phy_init, tphy, flip);
+
 	ret = t6040_usb3_wake(tphy);
 	if (ret)
 		return ret;
@@ -1225,6 +1236,8 @@ static int t6040_dp_phy_init(struct t6040_usb2_phy *tphy, bool flip)
 /* aciophy_dptx_main_init up to the link rate, which .configure sets. */
 static void t6040_dp_mode_setup(struct t6040_usb2_phy *tphy, bool flip)
 {
+	KUNIT_STATIC_STUB_REDIRECT(t6040_dp_mode_setup, tphy, flip);
+
 	t6040_dp_fixed_tunables(t6040_core(tphy));
 	t6040_dp_xbar_config(tphy, flip);
 	t6040_dp_adjust_lane_mode(tphy);
@@ -1309,16 +1322,21 @@ static int t6040_dp_set_rate(struct t6040_usb2_phy *tphy, int idx)
 	size_t i;
 	int ret;
 
-	if (tphy->dp_rate >= 0) {
+	KUNIT_STATIC_STUB_REDIRECT(t6040_dp_set_rate, tphy, idx);
+
+	if (tphy->dp_link_dirty) {
 		for (i = 0; i < ARRAY_SIZE(dp_link_off); i++) {
 			ret = t6040_dp_seq_step(tphy, &dp_link_off[i]);
 			if (ret)
 				return ret;
 		}
 		tphy->dp_rate = -1;
+		tphy->dp_link_dirty = false;
 	}
 	if (idx < 0)
 		return 0;
+	/* A partial link-on still needs link-off before another mode can own it. */
+	tphy->dp_link_dirty = true;
 	for (i = 0; i < ARRAY_SIZE(dp_link_on); i++) {
 		struct atc_op op = dp_link_on[i].op;
 
@@ -1361,18 +1379,23 @@ static int t6040_dp_power_on(struct phy *phy)
 	int ret;
 
 	guard(mutex)(&tphy->lock);
-	if (!tphy->dp_ok || tphy->dp_up)
+	if (!tphy->dp_ok)
+		return -ENODEV;
+	if (!t6040_dp_only(tphy) && !tphy->dp_alt)
+		return -ENOLINK;
+	if (tphy->dp_up)
 		return 0;
 	/*
-	 * A Type-C PHY in DP alt mode (pin assignment C/E) hands all four
-	 * lanes to DP: aciophy_phy_shutdown of the USB3 side first, then the
-	 * same mode-3 init as the fixed DP PHY.
+	 * tipd drops the USB role before changing the pin assignment. Never
+	 * park a live controller's PIPE from a DCP callback. USB power-on
+	 * while DP owns the assignment keeps the controller on its dummy PHY.
 	 */
-	if (!t6040_dp_only(tphy))
-		t6040_usb3_down_locked(tphy);
+	if (tphy->usb3_up || tphy->pipe_switched)
+		return -EBUSY;
 	ret = t6040_dp_phy_init(tphy, tphy->dp_flip);
 	if (ret) {
 		dev_err(tphy->dev, "DP PHY init failed: %d\n", ret);
+		t6040_usb3_sleep(tphy);
 		return ret;
 	}
 	t6040_dp_mode_setup(tphy, tphy->dp_flip);
@@ -1386,9 +1409,17 @@ static int t6040_dp_power_on(struct phy *phy)
 static int t6040_dp_power_off(struct phy *phy)
 {
 	struct t6040_usb2_phy *tphy = phy_get_drvdata(phy);
+	int ret;
 
 	guard(mutex)(&tphy->lock);
+	if (!tphy->dp_up)
+		return 0;
+	ret = t6040_dp_set_rate(tphy, -1);
+	if (ret)
+		return ret;
+	t6040_usb3_sleep(tphy);
 	tphy->dp_up = false;
+	/* The next USB role power-on starts USB3 from the same cold state. */
 	return 0;
 }
 
@@ -1473,40 +1504,44 @@ static const struct phy_ops t6040_dp_phy_ops = {
 
 /* ---- Type-C mode switch: the Type-C controller asks for DP on a USB-C port ---- */
 
-static int t6040_dp_mux_set(struct typec_mux_dev *mux, struct typec_mux_state *state)
+static int t6040_dp_mux_update(struct t6040_usb2_phy *tphy,
+				struct typec_mux_state *state)
 {
-	struct t6040_usb2_phy *tphy = typec_mux_get_drvdata(mux);
 	bool dp = state->alt && state->alt->svid == USB_TYPEC_DP_SID;
-	bool alt = false;
+	bool alt = dp && (state->mode == TYPEC_DP_STATE_C ||
+			  state->mode == TYPEC_DP_STATE_E);
+	bool flip;
 
 	guard(mutex)(&tphy->lock);
-	tphy->dp_flip = (tphy->orientation == TYPEC_ORIENTATION_REVERSE);
+	flip = tphy->orientation == TYPEC_ORIENTATION_REVERSE;
 	/*
-	 * Latch the DP alt mode state for the DCP's Type-C route. Pin
-	 * assignments C and E put DP on all four lanes (PHY mode 3, as the
-	 * fixed DP route); D (two DP lanes next to USB3, PHY mode 4 with the
-	 * coprocessor) is not supported. The DP lanes themselves are brought
-	 * up by the DCP through phy_power_on()/phy_configure() on the DP phy.
+	 * HPD-low is sent before tipd changes the role or assignment. Revoke
+	 * new DCP claims now, while the existing consumer drains its link.
+	 * The physical lanes remain owned until phy_power_off completes.
 	 */
-	if (dp) {
-		switch (state->mode) {
-		case TYPEC_DP_STATE_C:
-		case TYPEC_DP_STATE_E:
-			alt = true;
-			break;
-		case TYPEC_DP_STATE_D:
-			dev_warn_once(tphy->dev, "Type-C mux: DP pin assignment D (two lanes next to USB3) not supported\n");
-			break;
-		default:
-			break;
-		}
+	if (alt && state->data &&
+	    !(((struct typec_displayport_data *)state->data)->status & DP_STATUS_HPD_STATE)) {
+		tphy->dp_alt = false;
+		return 0;
 	}
+	if (tphy->dp_up && (!alt || !tphy->dp_alt || flip != tphy->dp_flip)) {
+		tphy->dp_alt = false;
+		return -ETIMEDOUT;
+	}
+	if (dp && (!alt || !tphy->dp_ok || !tphy->usb3_ok))
+		return -ENOTSUPP;
+	if (!dp && (state->alt || (state->mode != TYPEC_STATE_USB &&
+				  state->mode != TYPEC_STATE_SAFE)))
+		return -ENOTSUPP;
+
 	tphy->dp_alt = alt;
-	dev_dbg(tphy->dev, "Type-C mux: %s state %lu -> DP alt mode %d, lane map %s\n",
-		dp ? "DP" : "non-DP", state->mode, alt, tphy->dp_flip ? "reversed" : "normal");
-	if (alt && tphy->dp_up)
-		t6040_dp_xbar_config(tphy, tphy->dp_flip);
+	tphy->dp_flip = flip;
 	return 0;
+}
+
+static int t6040_dp_mux_set(struct typec_mux_dev *mux, struct typec_mux_state *state)
+{
+	return t6040_dp_mux_update(typec_mux_get_drvdata(mux), state);
 }
 
 /* For the DCP's Type-C route: is this PHY's port in DP alt mode (C/E)? */
@@ -1514,7 +1549,10 @@ bool apple_t6040_phy_dp_alt(struct phy *phy)
 {
 	struct t6040_usb2_phy *tphy = phy_get_drvdata(phy);
 
-	return tphy && tphy->dp_alt;
+	if (!tphy)
+		return false;
+	guard(mutex)(&tphy->lock);
+	return tphy->dp_alt;
 }
 EXPORT_SYMBOL_GPL(apple_t6040_phy_dp_alt);
 
@@ -1574,6 +1612,8 @@ static int t6040_dp_probe(struct t6040_usb2_phy *tphy)
 			.drvdata = tphy,
 			.fwnode = dev_fwnode(dev),
 			.set = t6040_dp_mux_set,
+			.safe_after_role = true,
+			.transient_timeouts = true,
 		};
 
 		tphy->mux = typec_mux_register(dev, &mux_desc);
@@ -1725,6 +1765,7 @@ static int t6040_usb3_probe(struct t6040_usb2_phy *tphy, struct platform_device 
 		if (IS_ERR(tphy->tunables[i])) {
 			dev_warn(dev, "USB3: %s: %pe, USB2 only\n",
 				 t6040_usb3_tunable_list[i].prop, tphy->tunables[i]);
+			tphy->tunables[i] = NULL;
 			return 0;
 		}
 	}
@@ -1733,6 +1774,7 @@ static int t6040_usb3_probe(struct t6040_usb2_phy *tphy, struct platform_device 
 	if (IS_ERR(tphy->tunable_pipehandler)) {
 		dev_warn(dev, "USB3: apple,tunable-pipehandler: %pe, USB2 only\n",
 			 tphy->tunable_pipehandler);
+		tphy->tunable_pipehandler = NULL;
 		return 0;
 	}
 
@@ -1926,6 +1968,7 @@ static int t6040_usb2_probe(struct platform_device *pdev)
 	/* Map the core/cfg (and USB3) windows once; both sub-probes share them. */
 	t6040_map_regions(tphy, pdev);
 
+	tphy->typec_port = of_property_present(dev->of_node, "orientation-switch");
 	ret = t6040_usb3_probe(tphy, pdev);
 	if (ret)
 		return ret;
@@ -1956,3 +1999,7 @@ module_platform_driver(t6040_usb2_driver);
 MODULE_AUTHOR("The Asahi Linux Contributors");
 MODULE_DESCRIPTION("Apple T6040 Type-C PHY, USB2/USB3 host and DisplayPort");
 MODULE_LICENSE("Dual BSD/GPL");
+
+#if IS_ENABLED(CONFIG_PHY_APPLE_T6040_KUNIT_TEST)
+#include "t6040-test.c"
+#endif

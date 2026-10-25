@@ -852,13 +852,13 @@ static int cd321x_typec_update_mode(struct tps6598x *tps,
 			ret = cd321x_mux_set(cd321x, held);
 			cd321x->state.data = &dp_data;
 			if (ret) {
-				*display_busy = cd321x_display_taken(ret, tps->h17_display);
+				*display_busy = cd321x_display_unavailable(ret, tps->h17_display);
 				goto out;
 			}
 			cd321x->dp_status = edge.status;
 		}
 		ret = cd321x_mux_set(cd321x, held);
-		*display_busy = cd321x_display_taken(ret, tps->h17_display);
+		*display_busy = cd321x_display_unavailable(ret, tps->h17_display);
 		if (!ret) {
 			cd321x->dp_status = dp_data.status;
 			cd321x->dp_conf = dp_data.conf;
@@ -1204,7 +1204,9 @@ static void cd321x_update_work(struct work_struct *work)
 	typec_set_pwr_opmode(tps->port, pwr_opmode);
 	typec_set_pwr_role(tps->port, TPS_STATUS_TO_TYPEC_PORTROLE(st.status));
 	typec_set_vconn_role(tps->port, TPS_STATUS_TO_TYPEC_VCONN(st.status));
-	typec_set_orientation(tps->port, orientation);
+	ret = typec_set_orientation(tps->port, orientation);
+	if (ret)
+		goto retry;
 	typec_set_data_role(tps->port, TPS_STATUS_TO_TYPEC_DATAROLE(st.status));
 	power_supply_changed(tps->psy);
 
