@@ -22,6 +22,17 @@ static struct apple_dcp parser_dcp = {
 	.dev = &parser_device,
 };
 
+/* The probe owns the metadata lock beside the mode catalogue. */
+static void parser_modes_init(struct apple_dcp *dcp)
+{
+	dcp_modes_init(dcp);
+	spin_lock_init(&dcp->metadata.lock);
+}
+
+static void parser_noop_work(struct work_struct *work)
+{
+}
+
 struct parser_blob {
 	u8 data[8192];
 	u32 size;
@@ -445,7 +456,7 @@ static void parser_replacement(struct kunit *test)
 	struct drm_display_mode requested;
 
 	KUNIT_ASSERT_NOT_NULL(test, dcp);
-	dcp_modes_init(dcp);
+	parser_modes_init(dcp);
 	blob = make_blob(test, &record, 1);
 	KUNIT_ASSERT_NOT_NULL(test, blob);
 	KUNIT_ASSERT_EQ(test, parse(blob->data, blob->size, &ctx), 0);
@@ -493,8 +504,7 @@ static void parser_held_keeps_edid(struct kunit *test)
 	KUNIT_ASSERT_NOT_NULL(test, dcp);
 	KUNIT_ASSERT_NOT_NULL(test, connector);
 	KUNIT_ASSERT_NOT_NULL(test, pipeline);
-	dcp_modes_init(dcp);
-	spin_lock_init(&dcp->metadata.lock);
+	parser_modes_init(dcp);
 	apple_connector_edid_init(connector);
 	apple_connector_set_pipeline(connector, pipeline);
 	dcp->connector = connector;
@@ -528,7 +538,7 @@ static void parser_attachment_admission(struct kunit *test)
 	struct drm_display_mode requested;
 
 	KUNIT_ASSERT_NOT_NULL(test, dcp);
-	dcp_modes_init(dcp);
+	parser_modes_init(dcp);
 	spin_lock_init(&dcp->mode_state.lock);
 	blob = make_blob(test, &record, 1);
 	KUNIT_ASSERT_NOT_NULL(test, blob);
@@ -575,7 +585,7 @@ static void parser_stale_transfer(struct kunit *test)
 	u64 old_generation, current_generation;
 
 	KUNIT_ASSERT_NOT_NULL(test, dcp);
-	dcp_modes_init(dcp);
+	parser_modes_init(dcp);
 	blob = make_blob(test, &record, 1);
 	KUNIT_ASSERT_NOT_NULL(test, blob);
 	KUNIT_ASSERT_EQ(test, parse(blob->data, blob->size, &ctx), 0);
@@ -649,7 +659,7 @@ static void parser_route_catalog_handoff(struct kunit *test)
 	KUNIT_ASSERT_NOT_NULL(test, connector);
 	KUNIT_ASSERT_NOT_NULL(test, other);
 	KUNIT_ASSERT_NOT_NULL(test, pipeline);
-	dcp_modes_init(dcp);
+	parser_modes_init(dcp);
 	dcp->dev = &pipeline->dev;
 	connector->dcp = pipeline;
 	observer->dcp = dcp;
@@ -770,7 +780,7 @@ static void parser_route_programming_guard(struct kunit *test)
 	KUNIT_ASSERT_NOT_NULL(test, connector->base.state);
 	connector->base.state->crtc = &crtc->base;
 	crtc_state.connector_mask = drm_connector_mask(&connector->base);
-	dcp_modes_init(dcp);
+	parser_modes_init(dcp);
 	dcp->modes_admitted = true;
 	dcp->fw_compat = DCP_FIRMWARE_V_13_5;
 	dcp->nr_typec_routes = 1;
@@ -856,7 +866,7 @@ static void parser_route_invalid_own_mode(struct kunit *test)
 	KUNIT_ASSERT_NOT_NULL(test, dcp);
 	KUNIT_ASSERT_NOT_NULL(test, crtc);
 	KUNIT_ASSERT_NOT_NULL(test, pdev);
-	dcp_modes_init(dcp);
+	parser_modes_init(dcp);
 	dcp->fw_compat = DCP_FIRMWARE_V_13_5;
 	dcp->nr_typec_routes = 1;
 	crtc->dcp = pdev;
@@ -875,7 +885,7 @@ static void parser_connector_ownership(struct kunit *test)
 	KUNIT_ASSERT_NOT_NULL(test, dcp);
 	KUNIT_ASSERT_NOT_NULL(test, fixed);
 	KUNIT_ASSERT_NOT_NULL(test, borrowed);
-	dcp_modes_init(dcp);
+	parser_modes_init(dcp);
 	mutex_lock(&dcp->modes_lock);
 	dcp->connector = borrowed;
 	dcp->modes_admitted = true;
@@ -903,7 +913,7 @@ static void parser_route_retirement(struct kunit *test)
 	KUNIT_ASSERT_NOT_NULL(test, fixed);
 	KUNIT_ASSERT_NOT_NULL(test, route);
 	KUNIT_ASSERT_NOT_NULL(test, other);
-	dcp_modes_init(dcp);
+	parser_modes_init(dcp);
 	dcp->connector = fixed;
 	dcp->active_typec_route = route;
 	dcp->modes_admitted = true;
@@ -927,7 +937,7 @@ static void parser_rejected_replacement(struct kunit *test)
 	struct parser_blob *blob;
 
 	KUNIT_ASSERT_NOT_NULL(test, dcp);
-	dcp_modes_init(dcp);
+	parser_modes_init(dcp);
 	blob = make_blob(test, &record, 1);
 	KUNIT_ASSERT_NOT_NULL(test, blob);
 	KUNIT_ASSERT_EQ(test, parse(blob->data, blob->size, &ctx), 0);
@@ -969,7 +979,7 @@ static void parser_attribute_epoch(struct kunit *test)
 
 	KUNIT_ASSERT_NOT_NULL(test, dcp);
 	KUNIT_ASSERT_NOT_NULL(test, blob);
-	dcp_modes_init(dcp);
+	parser_modes_init(dcp);
 	put_unaligned_le32(0xd3, blob->data);
 	blob->size = 4;
 	blob_tag(blob, 1, 3);
@@ -1003,7 +1013,7 @@ static void parser_attributes_malformed(struct kunit *test)
 
 	KUNIT_ASSERT_NOT_NULL(test, dcp);
 	KUNIT_ASSERT_NOT_NULL(test, blob);
-	dcp_modes_init(dcp);
+	parser_modes_init(dcp);
 	dcp->width_mm = 520;
 	dcp->height_mm = 290;
 	dcp->ext_backlight = true;
@@ -1040,7 +1050,7 @@ static void parser_optional_flag_extent(struct kunit *test)
 
 	KUNIT_ASSERT_NOT_NULL(test, dcp);
 	KUNIT_ASSERT_NOT_NULL(test, blob);
-	dcp_modes_init(dcp);
+	parser_modes_init(dcp);
 	put_unaligned_le32(0xd3, blob->data);
 	blob->size = 4;
 	blob_tag(blob, 1, 3);
@@ -1087,9 +1097,11 @@ static void parser_attribute_deferred(struct kunit *test)
 	KUNIT_ASSERT_NOT_NULL(test, connector);
 	KUNIT_ASSERT_NOT_NULL(test, dev);
 	KUNIT_ASSERT_NOT_NULL(test, blob);
-	dcp_modes_init(dcp);
+	parser_modes_init(dcp);
 	mutex_init(&dev->mode_config.mutex);
 	connector->base.dev = dev;
+	apple_connector_backlight_init(connector);
+	INIT_WORK(&connector->hotplug_wq, parser_noop_work);
 	dcp->connector = connector;
 	dcp->panel.width_mm = 600;
 	dcp->modes = kmalloc_obj(*dcp->modes);
@@ -1112,6 +1124,9 @@ static void parser_attribute_deferred(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, connector->base.display_info.width_mm, 520U);
 	KUNIT_EXPECT_EQ(test, connector->base.display_info.height_mm, 290U);
 	dcp_modes_release(dcp);
+	cancel_work_sync(&connector->hotplug_wq);
+	cancel_work_sync(&connector->bl_sync_wq);
+	apple_connector_backlight_early_unregister(connector);
 }
 
 static void parser_dimensions_lifetime(struct kunit *test)
@@ -1123,7 +1138,7 @@ static void parser_dimensions_lifetime(struct kunit *test)
 	KUNIT_ASSERT_NOT_NULL(test, dcp);
 	KUNIT_ASSERT_NOT_NULL(test, connector);
 	KUNIT_ASSERT_NOT_NULL(test, dev);
-	dcp_modes_init(dcp);
+	parser_modes_init(dcp);
 	mutex_init(&dev->mode_config.mutex);
 	connector->base.dev = dev;
 	dcp->connector = connector;
@@ -1152,7 +1167,7 @@ static void parser_catalog_release(struct kunit *test)
 	struct apple_dcp *dcp = kunit_kzalloc(test, sizeof(*dcp), GFP_KERNEL);
 
 	KUNIT_ASSERT_NOT_NULL(test, dcp);
-	dcp_modes_init(dcp);
+	parser_modes_init(dcp);
 	dcp->modes = kmalloc_obj(*dcp->modes);
 	KUNIT_ASSERT_NOT_NULL(test, dcp->modes);
 	dcp->nr_modes = 1;
