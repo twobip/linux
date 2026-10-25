@@ -83,9 +83,9 @@ properties:
     minItems: 3
     maxItems: 3
     description:
-      macOS version (major, minor, patch) whose boot firmware loaded the GPU
-      firmware, which identifies the firmware build. Filled in by the boot
-      loader.
+      Reported macOS version (major, minor, patch) whose boot firmware loaded
+      the GPU firmware. Filled in by the boot loader. This is a selection
+      hint; the T6040 driver requires the exact loaded image identity.
 
   apple,cs-opp:
     $ref: /schemas/types.yaml#/definitions/phandle
