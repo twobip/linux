@@ -527,7 +527,10 @@ retry:
 	if (ret)
 		goto out;
 
-	crtc_state->color_mgmt_changed |= true;
+	if (dcp_backlight_desktop(dcp))
+		crtc_state->planes_changed = true;
+	else
+		crtc_state->color_mgmt_changed = true;
 
 	ret = drm_atomic_commit(commit);
 out:
