@@ -145,8 +145,8 @@
 	 * GPU performance states, one opp-microvolt cell per cluster (ADT
 	 * /arm-io/sgx perf-states and perf-states1). The operating points are
 	 * binned per device: the loader fills these placeholders.
-	 * The driver requires a completed calibration handoff. Entries keep the order of the GPU performance
-	 * states, which is not sorted by frequency.
+	 * The driver requires a completed calibration handoff. Entries keep the
+	 * order of the GPU performance states, which is not sorted by frequency.
 	 */
 	gpu_opp: opp-table-gpu {
 		compatible = "operating-points-v2";
