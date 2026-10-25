@@ -61,6 +61,7 @@ def main():
         ('display', 'panel-brightness-takeover', display.takeover, ((),), ()),
         ('display', 'panel-mode-catalog', display.modes, ((),), ()),
         ('display', 'desktop-panel-identity', desktop.panel_identity, ((),), ()),
+        ('display', 'desktop-powerlog-framing', desktop.powerlog_framing, ((),), ()),
         ('display', 'panel-refresh-range', display.refresh, ((),), ()),
         ('display', 'panel-adaptive-fallback', display.adaptive, ((),), ()),
         ('display', 'panel-adaptive-watchdog', display.watchdog, ((),), ()),

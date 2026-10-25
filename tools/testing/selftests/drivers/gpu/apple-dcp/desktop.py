@@ -421,3 +421,84 @@ int main(void)
     return 0;
 }
 '''
+
+
+def powerlog_framing(root):
+    import rate
+    import struct
+    f = rate.parser_fixture(root)
+    # Use only the existing integer/string parser; no captured device data.
+    raw = bytearray(struct.pack('<I', 0xd3))
+    f['wire']({'mNits': 123000, 'iDAC': 42, 'timestamp': 1234,
+               'logEvent': 'Display (Event Forward)'}, raw)
+    afk = (root / 'drivers/gpu/drm/apple/afk.c').read_text()
+    afkh = (root / 'drivers/gpu/drm/apple/afk.h').read_text()
+    parser = (root / 'drivers/gpu/drm/apple/parser.c').read_text()
+    header = (root / 'drivers/gpu/drm/apple/parser.h').read_text()
+    system = (root / 'drivers/gpu/drm/apple/systemep.c').read_text()
+    prefix = f['prefix'] + f['metadata'] + f['epoch'].replace('static inline ', 'static inline __attribute__((unused)) ') + f['header'] + f['edid_header'] + f['parser']
+    prefix += block(header, 'struct dcp_system_ev_mnits {') + ';\n'
+    prefix += block(afkh, 'struct epic_compact_sub_hdr {') + ';\n'
+    prefix += block(afkh, 'struct epic_compact_desc {') + ';\n'
+    prefix += '#undef kfree\n#define kfree(p) free((void *)(p))\n#define pr_err(...) ((void)0)\n'
+    prefix += block(parser, 'int parse_system_log_mnits(')
+    prefix += r'''
+#define DCP_FIRMWARE_H17P 1
+#define DCP_FIRMWARE_V_26_6_DESKTOP 5
+#define DCP_IOMFB_METHODS_H17G 7
+#define READ_ONCE(x) (x)
+#define dev_dbg(...) ((void)0)
+#define dev_warn(...) ((void)0)
+#define __le64 u64
+#define EPIC_SUBTYPE_STD_SERVICE 0xc0
+enum epic_subtype { REPORT = 0xc0 };
+struct apple_dcp {void *dev;int fw_compat;struct {int iomfb_method_profile;} hw;struct {u32 nits;} brightness;};
+struct apple_epic_service;
+struct apple_dcp_afkep {struct apple_dcp *dcp;unsigned endpoint;struct apple_epic_service *service;};
+struct apple_epic_service_ops {int (*report)(struct apple_epic_service *,enum epic_subtype,const void *,size_t);};
+struct apple_epic_service {struct apple_dcp_afkep *ep;struct apple_epic_service_ops *ops;unsigned channel,users;};
+static unsigned hints;static u32 hint;
+static bool dcp_backlight_active(struct apple_dcp *d) {(void)d;return false;}
+static bool dcp_has_panel(struct apple_dcp *d) {(void)d;return true;}
+static int dcp_backlight_takeover(struct apple_dcp *d,u32 mnits) {(void)d;hints++;hint=mnits;return 0;}
+static u32 get_unaligned_le32(const void *p) {u32 v;memcpy(&v,p,4);return v;}
+static struct apple_epic_service *afk_epic_find_service(struct apple_dcp_afkep *e,u16 id)
+{assert(e->service->channel==id);return e->service;}
+static struct apple_epic_service *afk_service_get(struct apple_epic_service *s) {s->users++;return s;}
+static void afk_service_put(struct apple_epic_service *s) {assert(s->users);s->users--;}
+static void afk_recv_handle_compact_init(struct apple_dcp_afkep *e,u16 id,const void *p,size_t n)
+{(void)e;(void)id;(void)p;(void)n;assert(false);}
+static void afk_recv_handle_compact_call(struct apple_dcp_afkep *e,u16 id,const void *p,size_t n)
+{(void)e;(void)id;(void)p;(void)n;assert(false);}
+static void afk_recv_handle_compact_reply(struct apple_dcp_afkep *e,u16 id,u8 t,const void *p,size_t n)
+{(void)e;(void)id;(void)t;(void)p;(void)n;assert(false);}
+'''
+    functions = '\n'.join(block(source, name) for source, name in (
+        (system, 'static int powerlog_report('),
+        (afk, 'static bool afk_compact_report_dictionary('),
+        (afk, 'static void afk_recv_compact_message(')))
+    return prefix + '\n' + functions + '\nstatic const u8 report[]={'+','.join(map(str,raw))+'};\n' + r'''
+int main(void)
+{
+    struct apple_dcp d={.fw_compat=5};
+    struct apple_dcp_afkep ep={.dcp=&d,.endpoint=0x20};
+    struct apple_epic_service_ops ops={.report=powerlog_report};
+    struct apple_epic_service service={.ep=&ep,.ops=&ops,.channel=3};ep.service=&service;
+    u8 wire[16+8+sizeof(report)]={0};
+    struct epic_compact_sub_hdr *sub=(void *)(wire+8);sub->category=0;sub->type=0xc0;
+    memcpy(wire+16,report,sizeof(report));
+    afk_recv_compact_message(&ep,3,wire,16+sizeof(report));
+    assert(hints==1 && hint==123000 && !service.users);
+    /* Descriptor-wrapped reports keep their existing transport behavior. */
+    memset(wire+16,0,8);memcpy(wire+24,report,sizeof(report));
+    afk_recv_compact_message(&ep,3,wire,sizeof(wire));
+    assert(hints==2 && hint==123000 && !service.users);
+    /* The old unconditional descriptor removal loses the serialization header. */
+    struct dcp_parse_ctx ctx;assert(parse(report+8,sizeof(report)-8,&ctx)==-EINVAL);
+    /* Truncated data never creates a takeover hint. */
+    memcpy(wire+16,report,8);
+    afk_recv_compact_message(&ep,3,wire,23);
+    assert(hints==2 && !service.users);
+    return 0;
+}
+'''
