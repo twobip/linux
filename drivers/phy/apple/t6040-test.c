@@ -307,6 +307,18 @@ static void t6040_test_partial_link_is_stopped(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, ctx->sleep_calls, 1U);
 }
 
+static void t6040_test_absent_dp_lookup(struct kunit *test)
+{
+	struct t6040_test *ctx = test->priv;
+	struct of_phandle_args args = { .args_count = 1, .args = { PHY_TYPE_DP } };
+
+	dev_set_drvdata(ctx->tphy.dev, &ctx->tphy);
+	KUNIT_EXPECT_PTR_EQ(test, t6040_usb2_xlate(ctx->tphy.dev, &args), ERR_PTR(-ENODEV));
+	KUNIT_EXPECT_FALSE(test, apple_t6040_phy_dp_alt(NULL));
+	ctx->tphy.dp = &ctx->dp;
+	KUNIT_EXPECT_PTR_EQ(test, t6040_usb2_xlate(ctx->tphy.dev, &args), &ctx->dp);
+}
+
 static struct kunit_case t6040_test_cases[] = {
 	KUNIT_CASE(t6040_test_assignments),
 	KUNIT_CASE(t6040_test_missing_usb3_is_not_hdmi),
@@ -320,6 +332,7 @@ static struct kunit_case t6040_test_cases[] = {
 	KUNIT_CASE(t6040_test_failed_stop_retains_owner),
 	KUNIT_CASE(t6040_test_idempotent_power),
 	KUNIT_CASE(t6040_test_partial_link_is_stopped),
+	KUNIT_CASE(t6040_test_absent_dp_lookup),
 	{}
 };
 

@@ -61,6 +61,8 @@ config PHY_APPLE_T6040_KUNIT_TEST
 	help
 	  Test USB3 and DisplayPort ownership, unsupported assignments,
 	  disconnect draining and failed DP setup without PHY hardware.
+	  Also check that a partial link start is stopped before USB3
+	  returns, and that absent optional PHYs fail lookup cleanly.
 
 config PHY_APPLE_DPTX
 	tristate "Apple DPTX PHY"

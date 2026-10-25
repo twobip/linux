@@ -1569,8 +1569,11 @@ static int t6040_dp_mux_set(struct typec_mux_dev *mux, struct typec_mux_state *s
 /* For the DCP's Type-C route: is this PHY's port in DP alt mode (C/E)? */
 bool apple_t6040_phy_dp_alt(struct phy *phy)
 {
-	struct t6040_usb2_phy *tphy = phy_get_drvdata(phy);
+	struct t6040_usb2_phy *tphy;
 
+	if (!phy)
+		return false;
+	tphy = phy_get_drvdata(phy);
 	if (!tphy)
 		return false;
 	guard(mutex)(&tphy->lock);
@@ -1893,20 +1896,26 @@ static struct phy *t6040_usb2_xlate(struct device *dev,
 				    const struct of_phandle_args *args)
 {
 	struct t6040_usb2_phy *tphy = dev_get_drvdata(dev);
+	struct phy *phy;
 
 	if (args->args_count != 1)
 		return ERR_PTR(-ENODEV);
 
 	switch (args->args[0]) {
 	case PHY_TYPE_USB2:
-		return tphy->phy;
+		phy = tphy->phy;
+		break;
 	case PHY_TYPE_USB3:
-		return tphy->usb3;
+		phy = tphy->usb3;
+		break;
 	case PHY_TYPE_DP:
-		return tphy->dp;
+		phy = tphy->dp;
+		break;
 	default:
 		return ERR_PTR(-ENODEV);
 	}
+	/* The PHY core dereferences successful lookups, so never return NULL. */
+	return phy ?: ERR_PTR(-ENODEV);
 }
 
 static int t6040_usb2_probe(struct platform_device *pdev)
