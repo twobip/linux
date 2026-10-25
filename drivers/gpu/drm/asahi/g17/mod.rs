@@ -1117,7 +1117,7 @@ impl Gpu {
         // candidate, but admit only an exact loaded image, regardless of that hint.
         let preferred = builds.iter().filter(|build| Some(build.os_version) == version);
         let others = builds.iter().filter(|build| Some(build.os_version) != version);
-        for build in preferred.chain(others) {
+        for build in Iterator::chain(preferred, others) {
             if Self::identify_image(dev, build).is_ok() {
                 dev_info!(dev.as_ref(), "GPU firmware: {}\n", build.name);
                 return Ok(build.variant);

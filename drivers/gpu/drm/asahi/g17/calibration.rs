@@ -68,12 +68,11 @@ impl Calibration {
         let cs = words::<1>(&node, c_str!("apple,cs-leak-coef"))?;
         let afr = words::<1>(&node, c_str!("apple,afr-leak-coef"))?;
         // Positive finite binary32 values. Integer comparisons preserve their ordering.
-        if core
-            .iter()
-            .chain(&sram)
-            .chain(&cs)
-            .chain(&afr)
-            .any(|&v| !(0x3f80_0000..0x4780_0000).contains(&v))
+        if Iterator::chain(
+            Iterator::chain(Iterator::chain(core.iter(), &sram), &cs),
+            &afr,
+        )
+        .any(|&v| !(0x3f80_0000..0x4780_0000).contains(&v))
         {
             return Err(EINVAL);
         }
