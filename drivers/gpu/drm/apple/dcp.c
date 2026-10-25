@@ -921,8 +921,8 @@ VISIBLE_IF_KUNIT void dcp_swap_watchdog(struct work_struct *work)
 	    READ_ONCE(dcp->vrr_enabled)) {
 		WRITE_ONCE(dcp->desktop->vrr_failed, true);
 		WRITE_ONCE(dcp->vrr_enabled, false);
-		dcp_backlight_desktop_finish(dcp,
-				READ_ONCE(dcp->desktop->present_id), true, false);
+		dcp_backlight_desktop_finish(dcp, READ_ONCE(dcp->desktop->present_id),
+					     true, false);
 		dev_warn(dcp->dev, "adaptive swap timed out, restoring fixed refresh\n");
 	}
 	dev_warn(dcp->dev, "swap not completed, retraining the display\n");
@@ -1216,6 +1216,9 @@ int dcp_crtc_atomic_check(struct drm_crtc *crtc, struct drm_atomic_commit *commi
 	if (dcp->hw.iomfb_method_profile ==
 	    DCP_IOMFB_METHODS_H17P_EXTERNAL &&
 	    crtc_state->vrr_enabled)
+		return -EINVAL;
+
+	if (dcp_desktop_vrr_check(dcp, crtc_state))
 		return -EINVAL;
 
 	/* DRM core only caps the blob size; the gamma update copies a full table. */

@@ -319,7 +319,7 @@ struct apple_dcp;
 
 void dcp_backlight_desktop_power(struct apple_dcp *dcp, bool on);
 bool dcp_backlight_desktop_prepare(struct apple_dcp *dcp, u32 id,
-				    bool have_surface, u32 *nits);
+				   bool have_surface, u32 *nits);
 void dcp_backlight_desktop_finish(struct apple_dcp *dcp, u32 id,
 				  bool reply, bool accepted);
 
