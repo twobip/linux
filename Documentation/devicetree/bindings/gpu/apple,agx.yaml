@@ -99,6 +99,87 @@ properties:
       Operating-point table of the GPU's AFR clock domain, one voltage cell
       per state.
 
+  apple,t6040-handoff-version:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    const: 1
+    description:
+      Written last by the boot loader after it has filled the T6040 operating
+      points, memory regions and per-chip calibration. Absent in the source DT.
+
+  apple,core-mask:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 1
+    maximum: 1048575
+    description: Enabled cores in the two ten-core T6040 clusters, low cluster first
+
+  apple,max-power-mw:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 1
+    maximum: 200000
+    description: Per-chip maximum GPU power in milliwatts, calculated by the loader
+
+  apple,perf-base-pstate:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 1
+    maximum: 9
+    description: Logical base state of the frequency-relative performance table
+
+  apple,perf-map-a:
+    $ref: /schemas/types.yaml#/definitions/uint32-array
+    minItems: 11
+    maxItems: 11
+    description: Logical A state to ADT operating-point index
+
+  apple,perf-map-b:
+    $ref: /schemas/types.yaml#/definitions/uint32-array
+    minItems: 11
+    maxItems: 11
+    description: Logical B state to ADT operating-point index
+
+  apple,perf-relative-a:
+    $ref: /schemas/types.yaml#/definitions/uint32-array
+    minItems: 11
+    maxItems: 11
+    description: Per-chip relative power of each logical A state, in percent
+
+  apple,perf-relative-b:
+    $ref: /schemas/types.yaml#/definitions/uint32-array
+    minItems: 11
+    maxItems: 11
+    description: Relative frequency of the logical A ladder above the base state, in percent
+
+  apple,core-leak-coef:
+    $ref: /schemas/types.yaml#/definitions/uint32-array
+    minItems: 2
+    maxItems: 2
+    description:
+      GPU core leakage, one coefficient per cluster. Per-chip efuse values decoded by the boot loader,
+      stored as IEEE-754 binary32 bit patterns in big-endian cells.
+
+  apple,sram-leak-coef:
+    $ref: /schemas/types.yaml#/definitions/uint32-array
+    minItems: 2
+    maxItems: 2
+    description:
+      GPU SRAM leakage, one coefficient per cluster. Per-chip efuse values decoded by the boot loader,
+      stored as IEEE-754 binary32 bit patterns in big-endian cells.
+
+  apple,cs-leak-coef:
+    $ref: /schemas/types.yaml#/definitions/uint32-array
+    minItems: 1
+    maxItems: 1
+    description:
+      CS leakage. Per-chip efuse values decoded by the boot loader,
+      stored as IEEE-754 binary32 bit patterns in big-endian cells.
+
+  apple,afr-leak-coef:
+    $ref: /schemas/types.yaml#/definitions/uint32-array
+    minItems: 1
+    maxItems: 1
+    description:
+      AFR leakage. Per-chip efuse values decoded by the boot loader,
+      stored as IEEE-754 binary32 bit patterns in big-endian cells.
+
   apple,firmware-abi:
     $ref: /schemas/types.yaml#/definitions/uint32-array
     minItems: 3
