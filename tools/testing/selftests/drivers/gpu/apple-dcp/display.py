@@ -115,6 +115,9 @@ def modes(root):
                       f'assert(m[{j}].timing_mode_id=={elements[j]["ID"]}); '
                       f'assert(m[{j}].mode.htotal==2200 && m[{j}].mode.vtotal==1125); '
                       f'assert(m[{j}].mode.flags==(DRM_MODE_FLAG_PHSYNC|DRM_MODE_FLAG_PVSYNC)); ')
+        for j, hz in enumerate(expected):
+            if hz >= 119.88:
+                check += f'assert(m[{j}].needs_timestamps); '
         if ranges:
             for j, (lo, hi) in enumerate(ranges):
                 check += f'assert(m[{j}].vrr=={int(bool(lo))}); '
@@ -135,7 +138,7 @@ def modes(root):
         m=copy.deepcopy(supported[0]); m['VerticalAttributes']['PreciseSyncRate']=round(hz*65536)
         case([m], [hz], [(24<<16, round(hz*65536))])
     for lo, hi, valid in ((48<<16,120<<16,True), (0,120<<16,False),
-                          (60<<16,0,False), (120<<16,24<<16,False),
+                          (60<<16,0,False), (0,0,False), (120<<16,24<<16,False),
                           (24<<16,144<<16,False), (120<<16,120<<16,False)):
         m=copy.deepcopy(supported[0]); m['MinimumVariableRefreshRate']=lo; m['MaximumVariableRefreshRate']=hi
         case([m],[120],[(lo,hi) if valid else (0,0)])
