@@ -228,6 +228,9 @@ enum dcp_test_point {
  * for such a DCP only.
  */
 struct dcp_desktop_state {
+	/* Protected by backlight.lock, independent of framebuffer retirement. */
+	struct dcp_backlight_swap backlight;
+
 	/* Queued swap; too large for the shared swap union. */
 	struct dcp_swap_submit_req_v26_6_desktop swap;
 	/* Opaque client identity the firmware's IOMFB calls carry. */
@@ -238,6 +241,11 @@ struct dcp_desktop_state {
 	 * element before the real one is selected.
 	 */
 	bool mode_live;
+	/* An opt-in adaptive-sync failure stays fixed until the next boot. */
+	bool vrr_failed;
+	bool vrr_requested;
+	u32 present_id;
+	bool present_pending;
 	/*
 	 * GAMMA_LUT: the firmware's own table, read before the first change;
 	 * the table being sent; the LUT it is composed from, if any.
@@ -286,6 +294,8 @@ struct dcp_desktop_state {
 /* TODO: move IOMFB members to its own struct */
 struct dcpext_scanout;
 struct dcp_hdmi;
+
+bool dcp_desktop_vrr_supported(struct apple_dcp *dcp);
 
 struct apple_dcp {
 	/* Generation-specific wire/transaction state, sharing the common KMS owner. */
@@ -669,6 +679,7 @@ struct apple_dcp {
 		void (*kick)(struct apple_dcp *dcp);
 		/* Steps a running fade; fade_start is its start in jiffies. */
 		struct delayed_work fade_work;
+		struct delayed_work retry_work;
 		unsigned long fade_start;
 		/* Rate limit for firmware re-send requests. */
 		unsigned long resent_at;
