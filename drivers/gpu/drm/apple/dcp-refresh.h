@@ -9,7 +9,7 @@
 static inline bool dcp_refresh_is_promotion(u32 rate)
 {
 	return rate >= (120U << 16) - (120U << 16) / 500 &&
-		rate <= (120U << 16);
+		rate <= (120U << 16) + (120U << 16) / 500;
 }
 
 /* All rates are unsigned 16.16 Hz, including fractional fixed timings. */
