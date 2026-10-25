@@ -231,7 +231,7 @@ const struct drm_edid *dcp_panel_edid(const struct dcp_display_metadata *metadat
 	struct detailed_non_pixel *limits = &block.detailed_timings[3].data.other_data;
 	struct detailed_data_monitor_range *range = &limits->data.range;
 	const struct drm_edid *edid;
-	char serial[14];
+	char serial[14], name[14];
 	u32 min_v = U32_MAX, max_v = 0, min_h = U32_MAX, max_h = 0, clock = 0;
 	u16 manufacturer = 0;
 	u8 sum = 0;
@@ -295,8 +295,9 @@ const struct drm_edid *dcp_panel_edid(const struct dcp_display_metadata *metadat
 	block.gamma = 0xff;
 	block.features = DRM_EDID_FEATURE_PREFERRED_TIMING;
 	memset(block.standard_timings, 1, sizeof(block.standard_timings));
+	snprintf(name, sizeof(name), "%.3s %04x", metadata->manufacturer, metadata->product);
 	ret = dcp_metadata_text(&block.detailed_timings[1], EDID_DETAIL_MONITOR_NAME,
-				metadata->name);
+				metadata->name[0] ? metadata->name : name);
 	if (ret)
 		return ERR_PTR(ret);
 	snprintf(serial, sizeof(serial), "%08x", metadata->serial);

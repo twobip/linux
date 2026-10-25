@@ -1328,7 +1328,7 @@ static int parse_panel_label(struct dcp_parse_ctx *handle, char out[14])
 
 	if (IS_ERR(tag))
 		return PTR_ERR(tag);
-	if (!tag->size || tag->size > 255)
+	if (tag->size > 255)
 		return -EINVAL;
 	value = parse_bytes(handle, tag->size);
 	if (IS_ERR(value))
@@ -1381,12 +1381,14 @@ static int parse_metadata_product(struct dcp_parse_ctx *handle,
 			if (seen & 8)
 				return -EINVAL;
 			seen |= 8;
-			ret = parse_metadata_number(handle, &out->week, 0, 53);
+			ret = panel ? skip(handle) :
+				parse_metadata_number(handle, &out->week, 0, 53);
 		} else if (!strcmp(key, "YearOfManufacture")) {
 			if (seen & 16)
 				return -EINVAL;
 			seen |= 16;
-			ret = parse_metadata_number(handle, &out->year, 1990, 2245);
+			ret = panel ? skip(handle) :
+				parse_metadata_number(handle, &out->year, 1990, 2245);
 		} else if (!strcmp(key, "SerialNumber")) {
 			if (seen & 64)
 				return -EINVAL;
@@ -1410,7 +1412,12 @@ static int parse_metadata_product(struct dcp_parse_ctx *handle,
 		if (ret)
 			return ret;
 	}
-	if ((seen & (panel ? 7 : 31)) != (panel ? 7 : 31) ||
+	if (panel && !(seen & 1) && (seen & 32)) {
+		for (unsigned int i = 0; i < 3; i++)
+			out->manufacturer[i] = '@' + ((legacy >> (10 - 5 * i)) & 31);
+		seen |= 1;
+	}
+	if ((seen & (panel ? 5 : 31)) != (panel ? 5 : 31) ||
 	    strlen(out->manufacturer) != 3)
 		return -EINVAL;
 	for (unsigned int i = 0; i < 3; i++)
@@ -1476,6 +1483,17 @@ int parse_display_metadata(struct dcp_parse_ctx *handle, struct dcp_display_meta
 }
 
 /* Identity does not depend on optional colorimetry or EDID-compatible timing. */
+int parse_panel_product_metadata(struct dcp_parse_ctx *handle,
+				 struct dcp_display_metadata *out)
+{
+	struct dcp_display_metadata parsed = {};
+	int ret = parse_metadata_product(handle, &parsed, true);
+
+	if (!ret)
+		*out = parsed;
+	return ret;
+}
+
 int parse_panel_metadata(struct dcp_parse_ctx *handle, struct dcp_display_metadata *out)
 {
 	struct dcp_display_metadata parsed = {};

@@ -66,3 +66,9 @@ the firmware replies; another set cannot overwrite its stack.
 
 Repeated or partial DisplayAttributes retain a validated fixed-panel identity.
 They do not emit another identity hotplug event or revoke the EDID.
+
+Identity accepts both chunked DisplayAttributes and the desktop dictionary
+setters. A legacy PNP manufacturer code is decoded when the text code is absent.
+Missing optional labels are represented by the firmware vendor/product code and
+unspecified numeric serial, without inventing a per-device identity. Partial
+updates for the same vendor/product retain known optional identity fields.

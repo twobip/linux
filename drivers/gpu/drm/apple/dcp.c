@@ -780,6 +780,7 @@ const struct drm_edid *dcp_firmware_edid(struct apple_dcp *dcp, u64 *generation)
 void dcp_panel_metadata_replace(struct apple_dcp *dcp,
 				const struct dcp_display_metadata *metadata)
 {
+	struct dcp_display_metadata merged;
 	unsigned long flags;
 	bool changed = false;
 
@@ -787,10 +788,28 @@ void dcp_panel_metadata_replace(struct apple_dcp *dcp,
 	    !dcp_has_panel(dcp))
 		return;
 	spin_lock_irqsave(&dcp->metadata.lock, flags);
-	/* Partial or repeated attributes cannot revoke this fixed panel's identity. */
+	merged = *metadata;
+	if (dcp->desktop->panel_metadata_valid &&
+	    merged.product == dcp->desktop->panel_metadata.product &&
+	    !memcmp(merged.manufacturer, dcp->desktop->panel_metadata.manufacturer, 4)) {
+		const struct dcp_display_metadata *old = &dcp->desktop->panel_metadata;
+		bool same_serial = !merged.serial || merged.serial == old->serial;
+
+		/* Zero/empty optional fields mean unspecified, not a new panel. */
+		if (!merged.name[0])
+			memcpy(merged.name, old->name, sizeof(merged.name));
+		if (!merged.serial)
+			merged.serial = old->serial;
+		if (same_serial && !merged.serial_text[0])
+			memcpy(merged.serial_text, old->serial_text, sizeof(merged.serial_text));
+		if (!merged.year)
+			merged.year = old->year;
+		if (!merged.week)
+			merged.week = old->week;
+	}
 	if (!dcp->desktop->panel_metadata_valid ||
-	    memcmp(&dcp->desktop->panel_metadata, metadata, sizeof(*metadata))) {
-		dcp->desktop->panel_metadata = *metadata;
+	    memcmp(&dcp->desktop->panel_metadata, &merged, sizeof(merged))) {
+		dcp->desktop->panel_metadata = merged;
 		dcp->desktop->panel_metadata_valid = true;
 		dcp->desktop->panel_metadata_generation++;
 		changed = true;

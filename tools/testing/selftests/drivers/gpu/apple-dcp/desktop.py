@@ -368,14 +368,23 @@ def panel_identity(root, output=None):
                                         'ProductName': 'Synthetic Internal Panel',
                                         'SerialNumber': 0x12345678}}
     raw = bytearray(struct.pack('<I', 0xd3)); f['wire'](attributes, raw)
+    product = bytearray(struct.pack('<I', 0xd3)); f['wire'](attributes['ProductAttributes'], product)
+    minimal = bytearray(struct.pack('<I', 0xd3)); f['wire']({'LegacyManufacturerID': 0x5274, 'ProductID': 42, 'WeekOfManufacture': 0, 'YearOfManufacture': 0}, minimal)
     code = (f['prefix'] + f['metadata'] + f['epoch'].replace('static inline ', 'static inline __attribute__((unused)) ') + f['header'] +
             f['edid_header'] + f['parser'] + f['stubs'] + f['builder'])
     source = (root / 'drivers/gpu/drm/apple/dcp.c').read_text()
     helpers = '\n'.join(block(source, name) for name in (
         'void dcp_panel_metadata_replace(', 'bool dcp_panel_metadata_current(',
         'const struct drm_edid *dcp_panel_edid_snapshot('))
+    backend = (root / 'drivers/gpu/drm/apple/iomfb_v26_6_desktop.c').read_text()
+    dictionary = block(backend, 'struct dcp_dict_passthrough_req_v26_6 {')+';\n'
+    dictionary += block(backend, 'static bool trampoline_panel_dictionary_v26_6(')
+    dictionary += block(backend, 'bool iomfb_check_callback_v26_6_desktop(')
+    bindings = '\n'.join(line for line in block(backend, 'static const iomfb_cb_handler cb_handlers[').splitlines()
+                         if '[552]' in line or '[561]' in line)
     unit = code + r'''
 #define DCP_FIRMWARE_V_26_6_DESKTOP 5
+#define trace_iomfb_callback(...) ((void)0)
 #define spin_lock_irqsave(p,f) do {assert(!*(p));*(p)=true;(f)=0;} while(0)
 #define spin_unlock_irqrestore(p,f) do {assert(*(p));*(p)=false;(void)(f);} while(0)
 struct apple_dcp {
@@ -386,7 +395,7 @@ struct apple_dcp {
 static unsigned notifications;
 static bool dcp_has_panel(struct apple_dcp *d) {return d->has_panel;}
 static void dcp_queue_hotplug(void *con) {assert(con);notifications++;}
-''' + helpers + '\nstatic const u8 attributes[]={'+','.join(map(str,raw))+'};\n' + r'''
+''' + helpers + dictionary + '\nstatic const u8 attributes[]={'+','.join(map(str,raw))+'};\n' + 'static const u8 product[]={'+','.join(map(str,product))+'};\n' + 'static const u8 minimal[]={'+','.join(map(str,minimal))+'};\n' + r'''
 int main(int argc, char **argv)
 {
     struct dcp_parse_ctx ctx;
@@ -406,6 +415,41 @@ int main(int argc, char **argv)
     modes[0].vrr=true;modes[0].min_vrr=24U<<16;modes[0].max_vrr=120U<<16;
     u64 generation=99;
     assert(IS_ERR(dcp_panel_edid_snapshot(&d,modes,3,&generation)));
+    bool (*handlers[600])(struct apple_dcp *,int,void *,void *)={
+''' + bindings + r'''
+    };
+    for(unsigned form=0;form<3;form++) {
+        desktop=(__typeof__(desktop)){0};notifications=0;
+        struct dcp_dict_passthrough_req_v26_6 wire={0};u32 result=0;
+        strcpy((char *)wire.key,form?"ProductAttributes":"DisplayAttributes");
+        const u8 *data=form==2?minimal:form?product:attributes;
+        size_t size=form==2?sizeof(minimal):form?sizeof(product):sizeof(attributes);
+        memcpy(wire.value,data,size);
+        unsigned tag=form?552:561;
+        assert(iomfb_check_callback_v26_6_desktop(tag,sizeof(wire),4));
+        assert(iomfb_check_callback_v26_6_desktop(tag,sizeof(wire),1));
+        assert(!iomfb_check_callback_v26_6_desktop(tag,sizeof(wire)-1,4));
+        u8 short_reply[2]={0,0xa5};
+        assert(handlers[tag](&d,tag,short_reply,&wire));
+        assert(short_reply[0]==1 && short_reply[1]==0xa5);
+        assert(handlers[tag](&d,tag,&result,&wire) && result==1);
+        assert(desktop.panel_metadata_valid && notifications==1);
+        assert(desktop.panel_metadata.serial==(form==2?0:metadata.serial));
+        assert(!strcmp(desktop.panel_metadata.manufacturer,"TST"));
+        if(form==2) {
+            const struct drm_edid *minimal_edid=dcp_panel_edid_snapshot(&d,modes,3,&generation);
+            assert(!IS_ERR(minimal_edid) && drm_edid_valid(minimal_edid));
+            const u8 *m=(const void *)&minimal_edid->raw;
+            assert(!memcmp(m+72+5,"TST 002a",8) && !memcmp(m+90+5,"00000000",8));
+            drm_edid_free(minimal_edid);
+        }
+        /* Null and unrelated setters preserve the existing ACK and identity. */
+        wire.value_null=1;result=0;
+        assert(handlers[tag](&d,tag,&result,&wire) && result==1 && notifications==1);
+        wire.value_null=0;strcpy((char *)wire.key,"Unrelated");result=0;
+        assert(handlers[tag](&d,tag,&result,&wire) && result==1 && notifications==1);
+    }
+    desktop=(__typeof__(desktop)){0};notifications=0;
     dcp_panel_metadata_replace(&d,&metadata);
     assert(notifications==1 && desktop.panel_metadata_valid);
     const struct drm_edid *edid=dcp_panel_edid_snapshot(&d,modes,3,&generation);
@@ -429,6 +473,10 @@ int main(int argc, char **argv)
         dcp_panel_metadata_replace(&d,&metadata);
         assert(dcp_panel_metadata_current(&d,generation) && notifications==1);
     }
+    struct dcp_display_metadata partial={.manufacturer="TST",.product=42};
+    dcp_panel_metadata_replace(&d,&partial);
+    assert(dcp_panel_metadata_current(&d,generation) && notifications==1);
+    assert(desktop.panel_metadata.serial==metadata.serial);
     metadata.serial++;
     dcp_panel_metadata_replace(&d,&metadata);
     assert(!dcp_panel_metadata_current(&d,generation) && notifications==2);

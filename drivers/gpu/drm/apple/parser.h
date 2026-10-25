@@ -197,6 +197,8 @@ int replace_modes(struct dcp_parse_ctx *handle,
 		  int width_mm, int height_mm, unsigned int notch_height,
 		  bool internal);
 int parse_panel_metadata(struct dcp_parse_ctx *handle, struct dcp_display_metadata *out);
+int parse_panel_product_metadata(struct dcp_parse_ctx *handle,
+				 struct dcp_display_metadata *out);
 int parse_display_attributes(struct dcp_parse_ctx *handle, int *width_mm,
 			     int *height_mm, bool *backlight_control);
 int parse_epic_service_init(struct dcp_parse_ctx *handle, const char **name,

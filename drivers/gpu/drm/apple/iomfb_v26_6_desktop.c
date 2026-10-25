@@ -91,6 +91,37 @@ static bool trampoline_passthrough_dict_v26_6(struct apple_dcp *dcp, int tag,
 	return true;
 }
 
+/* The firmware can publish panel identity through dictionary setters too. */
+static bool trampoline_panel_dictionary_v26_6(struct apple_dcp *dcp, int tag,
+					      void *out, void *in)
+{
+	const struct dcp_dict_passthrough_req_v26_6 *req = in;
+	const char *key = (const char *)req->key;
+	struct dcp_display_metadata metadata;
+	struct dcp_parse_ctx ctx;
+	int ret;
+
+	trace_iomfb_callback(dcp, tag, __func__);
+	if (!dcp_has_panel(dcp) || req->value_null ||
+	    !memchr(key, 0, sizeof(req->key)))
+		goto done;
+	if (strcmp(key, "DisplayAttributes") && strcmp(key, "ProductAttributes"))
+		goto done;
+	ret = parse(req->value, sizeof(req->value), &ctx);
+	if (ret)
+		goto done;
+	if (!strcmp(key, "ProductAttributes"))
+		ret = parse_panel_product_metadata(&ctx, &metadata);
+	else
+		ret = parse_panel_metadata(&ctx, &metadata);
+	if (!ret)
+		dcp_panel_metadata_replace(dcp, &metadata);
+done:
+	/* Preserve the existing setter acknowledgment for unrelated properties. */
+	*(u8 *)out = true;
+	return true;
+}
+
 bool iomfb_check_callback_v26_6_desktop(int tag, u32 in_len, u32 out_len)
 {
 	switch (tag) {
@@ -104,6 +135,9 @@ bool iomfb_check_callback_v26_6_desktop(int tag, u32 in_len, u32 out_len)
 		return in_len == 24 && out_len == 20;
 	case 454:
 		return in_len == 4 && out_len == 4;
+	case 552:
+	case 561:
+		return in_len == 4164 && (out_len == 1 || out_len == 4);
 	default:
 		return true;
 	}
@@ -198,8 +232,8 @@ static const iomfb_cb_handler cb_handlers[IOMFB_MAX_CB] = {
 	[451] = trampoline_allocate_buffer,
 	[452] = trampoline_map_physical,
 	[454] = trampoline_release_mem_desc_v26_6,
-	[552] = trampoline_true, /* set_property_dict_0 */
-	[561] = trampoline_true, /* set_property_dict */
+	[552] = trampoline_panel_dictionary_v26_6,
+	[561] = trampoline_panel_dictionary_v26_6,
 	[563] = trampoline_true, /* set_property_int */
 	[565] = trampoline_true, /* set_property_bool */
 	[567] = trampoline_true, /* set_property_str */

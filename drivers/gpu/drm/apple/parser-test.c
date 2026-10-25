@@ -1379,7 +1379,13 @@ static void parser_panel_identity_stable(struct kunit *test)
 	KUNIT_EXPECT_TRUE(test, dcp_panel_metadata_current(dcp, generation));
 	dcp_panel_metadata_replace(dcp, NULL);
 	dcp_panel_metadata_replace(dcp, &metadata);
+	{
+		struct dcp_display_metadata partial = { .manufacturer = "TST", .product = 42 };
+
+		dcp_panel_metadata_replace(dcp, &partial);
+	}
 	KUNIT_EXPECT_TRUE(test, dcp_panel_metadata_current(dcp, generation));
+	KUNIT_EXPECT_EQ(test, desktop->panel_metadata.serial, 1U);
 	metadata.serial++;
 	dcp_panel_metadata_replace(dcp, &metadata);
 	KUNIT_EXPECT_FALSE(test, dcp_panel_metadata_current(dcp, generation));

@@ -184,3 +184,7 @@ mapping and release, and unknown-callback failure followed by a successful set.
 
 Panel identity tests also retain the EDID and generation across repeated and
 partial dictionaries, and notify only when valid identity data actually changes.
+
+The identity case also exercises the real D552/D561 table bindings, nested
+DisplayAttributes and direct ProductAttributes, legacy manufacturer codes,
+minimal identity data, and unchanged byte/padded boolean acknowledgments.
