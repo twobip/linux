@@ -1898,6 +1898,19 @@ static int dcp_dptx_connect_tile(struct apple_dcp *dcp)
  * DP alt mode hotplug of the port (USB-C), and the Type-C port chosen
  * dynamically from the PHY that entered DP alt mode.
  */
+/* The provider is optional, as it is for the Type-C display fabric. */
+static bool dcp_desktop_phy_dp_alt(struct phy *phy)
+{
+	typeof(&apple_t6040_phy_dp_alt) fn = symbol_get(apple_t6040_phy_dp_alt);
+	bool active;
+
+	if (!fn)
+		return false;
+	active = fn(phy);
+	symbol_put(apple_t6040_phy_dp_alt);
+	return active;
+}
+
 /* The caller holds hpd_mutex, which also orders dcp->phy against a connect. */
 static int dcp_desktop_dyn_route_select_locked(struct apple_dcp *dcp)
 {
@@ -1909,7 +1922,7 @@ static int dcp_desktop_dyn_route_select_locked(struct apple_dcp *dcp)
 	if (!d->ndyn || d->dyn_active >= 0)
 		return 0;
 	for (i = 0; i < d->ndyn; i++)
-		if (apple_t6040_phy_dp_alt(d->dyn_phy[i]))
+		if (dcp_desktop_phy_dp_alt(d->dyn_phy[i]))
 			break;
 	if (i == d->ndyn) {
 		dev_dbg(dcp->dev, "no Type-C port in DP alt mode\n");

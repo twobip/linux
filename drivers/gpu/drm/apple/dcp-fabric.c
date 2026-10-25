@@ -1576,7 +1576,7 @@ static bool dcp_t602x_tunnel_route(struct apple_dcp_typec_route *route)
  * Crossbar connection up/down, looked up at runtime so appledrm does not
  * require the crossbar driver to be built.
  */
-static int dcp_dpxbar_link(struct mux_control *mux, bool up)
+int dcp_dpxbar_link(struct mux_control *mux, bool up)
 {
 	typeof(&apple_dpxbar_link_up) fn;
 	int ret;

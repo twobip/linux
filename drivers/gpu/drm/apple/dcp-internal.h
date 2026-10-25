@@ -837,4 +837,6 @@ static inline bool dcp_ext_dptx_607(const struct apple_dcp *dcp)
 
 #define DCP_AUDIO_MAX_CHANS 15
 
+int dcp_dpxbar_link(struct mux_control *mux, bool up);
+
 #endif /* __APPLE_DCP_INTERNAL_H__ */

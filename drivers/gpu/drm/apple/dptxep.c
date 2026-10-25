@@ -490,8 +490,7 @@ static int dptxport_compact_xbar_link(struct apple_epic_service *service, bool u
 
 	if (!READ_ONCE(service->ep->compact) || !dcp->xbar)
 		return 0;
-	ret = up ? apple_dpxbar_link_up(dcp->xbar) :
-		   apple_dpxbar_link_down(dcp->xbar);
+	ret = dcp_dpxbar_link(dcp->xbar, up);
 	dev_dbg(dcp->dev, "DPTXPort: crossbar link %s: %d\n", up ? "up" : "down", ret);
 	return ret;
 }
