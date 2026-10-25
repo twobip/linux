@@ -8,8 +8,10 @@ def lifecycle(root):
     source = (root / 'drivers/gpu/drm/apple/dcp-fabric.c').read_text()
     production = '\n'.join(block(source, marker) for marker in (
         'static bool dcp_typec_route_is_dp(',
+        'int dcp_typec_phy_on(',
         'static int dcp_typec_route_phy_off(',
         'static int dcp_typec_desktop_release(',
+        'static void dcp_typec_port_attach(',
         'static void dcp_typec_route_abort(',
         'static int dcp_typec_route_finish(',
     ))
@@ -24,6 +26,8 @@ def lifecycle(root):
 #define USB_TYPEC_DP_SID 0xff01
 #define DP_STATUS_HPD_STATE 1
 #define DCP_FIRMWARE_V_26_6_DESKTOP 26
+#define READ_ONCE(x) (x)
+#define lockdep_assert_held(lock) ((void)(lock))
 #define WRITE_ONCE(x, v) ((x) = (v))
 #define guard(kind) (void)
 #define to_platform_device(dev) (dev)
@@ -31,14 +35,16 @@ def lifecycle(root):
 #define dev_warn(...) ((void)0)
 static int dcp_typec_fabric_lock;
 struct phy { int unused; };
-struct apple_dcp { int fw_compat; void *dev; bool typec_cable_connected; };
+struct apple_dcp { int fw_compat, hpd_mutex, nr_typec_routes;
+ void *dev, *fixed_phy, *typec_connector; bool typec_cable_connected;
+ struct apple_dcp_typec_route *active_typec_route; };
 struct apple_dcp_typec_route {
  struct apple_dcp *dcp; struct apple_dcp_typec_port *port;
  struct phy *phy; bool phy_powered;
 };
 struct apple_dcp_typec_port {
  struct apple_dcp_typec_route *owner;
- bool hpd, safe_pending, safe_finish_ready, applied_valid;
+ bool hpd, dp_hpd, dp_wanted, safe_pending, safe_finish_ready, applied_valid;
 };
 struct typec_mux_dev { struct apple_dcp_typec_route *route; };
 struct typec_altmode { unsigned svid; };
@@ -51,10 +57,16 @@ static int phy_power_off(struct phy *p) { (void)p; return power_off_error; }
 static int phy_exit(struct phy *p) { (void)p; exit_calls++; return 0; }
 static int dcp_typec_route_phy_off(struct apple_dcp_typec_route *);
 static struct apple_dcp_typec_route *active;
+int dcp_typec_phy_on(struct apple_dcp *dcp);
+static int dcp_typec_route_phy_on(struct apple_dcp_typec_route *r)
+{
+ assert(phy_assignment_seen); r->phy_powered=true; return 0;
+}
 static int dcp_dptx_connect_oob(void *dev, int port)
 {
  (void)dev; (void)port; assert(phy_assignment_seen); connect_calls++;
- active->phy_powered=true; return connect_error;
+ int ret=dcp_typec_phy_on(active->dcp);
+ return ret ?: connect_error;
 }
 static int dcp_dptx_disconnect_oob(void *dev, int port)
 {
@@ -79,6 +91,19 @@ int main(void)
  struct typec_displayport_data data={.status=DP_STATUS_HPD_STATE};
  struct typec_mux_state state={.alt=&alt,.mode=TYPEC_DP_STATE_A,.data=&data};
  active=&route;
+ /* An idle Type-C pointer is for service discovery, never for a link claim. */
+ dcp.nr_typec_routes=1;
+ assert(dcp_typec_phy_on(&dcp)==-ENOLINK);
+ dcp.fixed_phy=&route;
+ assert(!dcp_typec_phy_on(&dcp));
+ dcp.fixed_phy=NULL;
+ dcp.nr_typec_routes=0;
+ assert(!dcp_typec_phy_on(&dcp));
+ dcp.nr_typec_routes=1;
+ dcp.active_typec_route=&route;
+ /* Busy is reported after all mode switches can receive their assignment. */
+ assert(dcp_typec_route_finish(&mux,&state)==-ENOSPC);
+ assert(!connect_calls && !port.owner);
  /* Either provider may set first. Neither set may start a display before end. */
  for (int order=0; order<2; order++) {
   phy_assignment_seen=false; port.owner=NULL; port.hpd=false;
@@ -101,6 +126,11 @@ int main(void)
  port.owner=&route; connect_error=-EIO;
  assert(dcp_typec_route_finish(&mux,&state)==-ENODEV);
  assert(!port.owner && !dcp.typec_cable_connected && !route.phy_powered);
+ /* A waiting sink which fails attach is cleaned up, not published as live. */
+ port.owner=&route; port.dp_hpd=true; port.dp_wanted=true;
+ dcp.typec_connector=&port;
+ dcp_typec_port_attach(&port);
+ assert(!port.owner && !port.hpd && !port.dp_wanted && !port.dp_hpd);
  /* Failed power-off must not exit the PHY, deselect or discard its owner. */
  port.owner=&route; route.phy_powered=true; power_off_error=-ETIMEDOUT;
  int exits=exit_calls, deselects=deselect_calls;

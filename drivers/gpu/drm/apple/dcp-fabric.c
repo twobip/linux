@@ -344,6 +344,10 @@ int dcp_typec_phy_on(struct apple_dcp *dcp)
 	struct apple_dcp_typec_route *route = READ_ONCE(dcp->active_typec_route);
 
 	lockdep_assert_held(&dcp->hpd_mutex);
+	/* The initial PHY pointer permits endpoint discovery, not an idle link. */
+	if (!route && dcp->nr_typec_routes && !dcp->fixed_phy &&
+	    dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP)
+		return -ENOLINK;
 	return route ? dcp_typec_route_phy_on(route) : 0;
 }
 
@@ -1050,18 +1054,31 @@ static void dcp_typec_plan(struct drm_device *drm,
 	}
 }
 
+static int dcp_typec_desktop_release(struct apple_dcp_typec_port *port);
+
 /* Replay HPD to the pipeline a direct DP-alt port has just been given. */
 static void dcp_typec_port_attach(struct apple_dcp_typec_port *port)
 {
 	struct apple_dcp *dcp = port->owner->dcp;
+	int ret;
 
 	port->hpd = port->dp_hpd;
 	if (!port->hpd)
 		return;
 
 	WRITE_ONCE(dcp->typec_cable_connected, true);
-	if (dcp->typec_connector)
-		dcp_dptx_connect_oob(to_platform_device(dcp->dev), 0);
+	if (!dcp->typec_connector)
+		return;
+	ret = dcp_dptx_connect_oob(to_platform_device(dcp->dev), 0);
+	if (ret && dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP) {
+		/* A failed waiting sink must not masquerade as a running display. */
+		port->hpd = false;
+		port->dp_wanted = false;
+		port->dp_hpd = false;
+		ret = dcp_typec_desktop_release(port);
+		if (ret)
+			dev_warn(dcp->dev, "waiting Type-C attach cleanup held: %d\n", ret);
+	}
 }
 
 /*
@@ -1440,19 +1457,22 @@ static void dcp_typec_route_abort(struct typec_mux_dev *mux,
 static int dcp_typec_route_finish(struct typec_mux_dev *mux,
 				  struct typec_mux_state *state)
 {
-	struct apple_dcp_typec_port *port =
-		((struct apple_dcp_typec_route *)typec_mux_get_drvdata(mux))->port;
+	struct apple_dcp_typec_route *route = typec_mux_get_drvdata(mux);
+	struct apple_dcp_typec_port *port = route->port;
 	int ret;
 
 	guard(mutex)(&dcp_typec_fabric_lock);
 	/* All mode switches have now seen DP and the orientation, in either order. */
-	if (dcp_typec_route_is_dp(state) && port->owner && !port->hpd &&
-	    port->owner->dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP) {
+	if (dcp_typec_route_is_dp(state) &&
+	    route->dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP) {
 		struct typec_displayport_data *data = state->data;
-		struct apple_dcp *dcp = port->owner->dcp;
+		struct apple_dcp *dcp;
 
-		if (!data || !(data->status & DP_STATUS_HPD_STATE))
+		if (!data || !(data->status & DP_STATUS_HPD_STATE) || port->hpd)
 			return 0;
+		if (!port->owner)
+			return -ENOSPC;
+		dcp = port->owner->dcp;
 		WRITE_ONCE(dcp->typec_cable_connected, true);
 		ret = dcp_dptx_connect_oob(to_platform_device(dcp->dev), 0);
 		if (ret) {
@@ -1673,8 +1693,16 @@ static int dcp_typec_route_set(struct typec_mux_dev *mux,
 	if (!port->owner) {
 		best = dcp_typec_free_route(port);
 		/* Every pipeline is driving another port's display. */
-		if (!best)
+		if (!best) {
+			/*
+			 * Give the PHY its assignment before reporting busy in finish.
+			 * Otherwise provider order could start USB3 on lanes reserved
+			 * for DP, and a later freed pipeline could not attach safely.
+			 */
+			if (route->dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP)
+				return 0;
 			return hpd ? dcp_typec_port_busy(port, route->dcp) : -ENOSPC;
+		}
 
 		ret = dcp_typec_route_activate(best, best->xbar);
 		if (ret)
