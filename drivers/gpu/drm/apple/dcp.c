@@ -781,16 +781,22 @@ void dcp_panel_metadata_replace(struct apple_dcp *dcp,
 				const struct dcp_display_metadata *metadata)
 {
 	unsigned long flags;
+	bool changed = false;
 
-	if (dcp->fw_compat != DCP_FIRMWARE_V_26_6_DESKTOP || !dcp_has_panel(dcp))
+	if (!metadata || dcp->fw_compat != DCP_FIRMWARE_V_26_6_DESKTOP ||
+	    !dcp_has_panel(dcp))
 		return;
 	spin_lock_irqsave(&dcp->metadata.lock, flags);
-	dcp->desktop->panel_metadata_generation++;
-	dcp->desktop->panel_metadata_valid = !!metadata;
-	if (metadata)
+	/* Partial or repeated attributes cannot revoke this fixed panel's identity. */
+	if (!dcp->desktop->panel_metadata_valid ||
+	    memcmp(&dcp->desktop->panel_metadata, metadata, sizeof(*metadata))) {
 		dcp->desktop->panel_metadata = *metadata;
+		dcp->desktop->panel_metadata_valid = true;
+		dcp->desktop->panel_metadata_generation++;
+		changed = true;
+	}
 	spin_unlock_irqrestore(&dcp->metadata.lock, flags);
-	if (dcp->connector)
+	if (changed && dcp->connector)
 		dcp_queue_hotplug(dcp->connector);
 }
 

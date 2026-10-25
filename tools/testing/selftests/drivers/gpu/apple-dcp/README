@@ -181,3 +181,6 @@ new reports must converge monotonically to the last user target in both
 directions. Report observations cannot restart a fade or request another write.
 The callback cases exercise the desktop D202/D454 wire adapters, physical resource
 mapping and release, and unknown-callback failure followed by a successful set.
+
+Panel identity tests also retain the EDID and generation across repeated and
+partial dictionaries, and notify only when valid identity data actually changes.

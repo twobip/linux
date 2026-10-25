@@ -1359,7 +1359,35 @@ static void parser_panel_identity(struct kunit *test)
 	drm_edid_free(edid);
 }
 
+static void parser_panel_identity_stable(struct kunit *test)
+{
+	struct apple_dcp *dcp = kunit_kzalloc(test, sizeof(*dcp), GFP_KERNEL);
+	struct dcp_desktop_state *desktop = kunit_kzalloc(test, sizeof(*desktop), GFP_KERNEL);
+	struct dcp_display_metadata metadata = {
+		.manufacturer = "TST", .name = "Synthetic", .product = 42, .serial = 1,
+	};
+	u64 generation;
+
+	KUNIT_ASSERT_NOT_NULL(test, dcp);
+	KUNIT_ASSERT_NOT_NULL(test, desktop);
+	dcp->desktop = desktop;
+	dcp->fw_compat = DCP_FIRMWARE_V_26_6_DESKTOP;
+	dcp->panel.width_mm = 345;
+	spin_lock_init(&dcp->metadata.lock);
+	dcp_panel_metadata_replace(dcp, &metadata);
+	generation = desktop->panel_metadata_generation;
+	KUNIT_EXPECT_TRUE(test, dcp_panel_metadata_current(dcp, generation));
+	dcp_panel_metadata_replace(dcp, NULL);
+	dcp_panel_metadata_replace(dcp, &metadata);
+	KUNIT_EXPECT_TRUE(test, dcp_panel_metadata_current(dcp, generation));
+	metadata.serial++;
+	dcp_panel_metadata_replace(dcp, &metadata);
+	KUNIT_EXPECT_FALSE(test, dcp_panel_metadata_current(dcp, generation));
+	KUNIT_EXPECT_EQ(test, desktop->panel_metadata.serial, 2U);
+}
+
 static struct kunit_case parser_cases[] = {
+	KUNIT_CASE(parser_panel_identity_stable),
 	KUNIT_CASE(parser_panel_identity),
 	KUNIT_CASE(parser_score_presence),
 	KUNIT_CASE(parser_legacy_ties),

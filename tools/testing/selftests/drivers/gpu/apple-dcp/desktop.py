@@ -423,11 +423,20 @@ int main(int argc, char **argv)
     /* The encoded timing clock rounds to 10 kHz; the DCP catalog is unchanged. */
     assert(modes[1].mode.clock==540005 && modes[0].mode.clock==1080005);
     drm_edid_free(edid);
-    dcp_panel_metadata_replace(&d,NULL);
-    assert(!dcp_panel_metadata_current(&d,generation));
-    assert(IS_ERR(dcp_panel_edid_snapshot(&d,modes,3,&generation)));
+    /* Repeated and partial dictionaries cannot trigger monitor/brightness restore loops. */
+    for(unsigned repeat=0;repeat<32;repeat++) {
+        dcp_panel_metadata_replace(&d,NULL);
+        dcp_panel_metadata_replace(&d,&metadata);
+        assert(dcp_panel_metadata_current(&d,generation) && notifications==1);
+    }
+    metadata.serial++;
+    dcp_panel_metadata_replace(&d,&metadata);
+    assert(!dcp_panel_metadata_current(&d,generation) && notifications==2);
+    edid=dcp_panel_edid_snapshot(&d,modes,3,&generation);
+    assert(!IS_ERR(edid) && dcp_panel_metadata_current(&d,generation));
+    drm_edid_free(edid);
     /* Another firmware/profile cannot publish a desktop panel identity. */
-    d.fw_compat=2;dcp_panel_metadata_replace(&d,&metadata);
+    desktop=(__typeof__(desktop)){0};d.fw_compat=2;dcp_panel_metadata_replace(&d,&metadata);
     assert(!desktop.panel_metadata_valid);
     metadata.manufacturer[0]='?';assert(IS_ERR(dcp_panel_edid(&metadata,modes,3,345,223)));
     return 0;

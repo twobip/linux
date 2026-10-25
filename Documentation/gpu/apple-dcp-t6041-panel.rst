@@ -63,3 +63,6 @@ reply. Its enclosing command must ACK before the set fails, so a subsequent
 mode change can reuse the drained channel. Accepted atomic modeset errors are
 reported through the out-fence. A timed-out command retains its channel until
 the firmware replies; another set cannot overwrite its stack.
+
+Repeated or partial DisplayAttributes retain a validated fixed-panel identity.
+They do not emit another identity hotplug event or revoke the EDID.
