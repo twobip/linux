@@ -272,7 +272,56 @@ static inline unsigned int dcp_bl_retry_delay(const struct dcp_backlight_state *
 	return 100U << (state->retries - 1);
 }
 
+/* A desktop present can complete before its submit reply arrives. */
+struct dcp_backlight_swap {
+	struct dcp_backlight_present present;
+	u32 id;
+	bool pending;
+	bool accepted;
+	bool completed;
+};
+
+static inline int dcp_bl_swap_prepare(struct dcp_backlight_state *state,
+				      struct dcp_backlight_swap *swap,
+				      u32 id, bool have_surface)
+{
+	struct dcp_backlight_present present;
+	int ret = dcp_bl_prepare(state, have_surface, &present);
+
+	if (ret)
+		return ret;
+	*swap = (struct dcp_backlight_swap) {
+		.present = present,
+		.id = id,
+		.pending = true,
+	};
+	return 0;
+}
+
+static inline bool dcp_bl_swap_finish(struct dcp_backlight_state *state,
+				      struct dcp_backlight_swap *swap,
+				      u32 id, bool reply, bool accepted)
+{
+	if (!swap->pending || swap->id != id)
+		return false;
+	if (reply)
+		swap->accepted = accepted;
+	else
+		swap->completed = true;
+	if ((!reply || accepted) && !(swap->accepted && swap->completed))
+		return false;
+	swap->pending = false;
+	return dcp_bl_complete(state, swap->present.sequence,
+			      swap->accepted && swap->completed);
+}
+
 struct apple_dcp;
+
+void dcp_backlight_desktop_power(struct apple_dcp *dcp, bool on);
+bool dcp_backlight_desktop_prepare(struct apple_dcp *dcp, u32 id,
+				    bool have_surface, u32 *nits);
+void dcp_backlight_desktop_finish(struct apple_dcp *dcp, u32 id,
+				  bool reply, bool accepted);
 
 /*
  * kick only queues work; it must not submit a top-level RPC from the caller.

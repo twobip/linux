@@ -158,3 +158,14 @@ surviving an unrelated failed AGX request, both reply/timeout lock orderings,
 malformed replies, true owner failure, an unowned or invalid fault SID, probe
 rollback versus published DMA lifetime, exactly-once DRM event ownership, and
 mixed-owner, truncated, failed-translation and invalid-owner IOMMU tuples.
+
+Internal panel policy
+---------------------
+The display group covers the shared nits ramp on a 600-nit panel, retargeting,
+blanking, suspend, rejected submits and both submit/completion callback orders.
+Synthetic TimingElements exercise 120 Hz and fractional lower refresh rates,
+DCP color/timing identities, invalid geometry and adaptive-sync ranges. The
+adaptive-sync callback test verifies the desktop parameter record, mode-info
+ordering and one fixed-refresh retry after a rejected enable or modeset.
+These tests do not establish which timings a particular panel reports or prove
+refresh rate, flicker, brightness smoothness or adaptive-sync on hardware.

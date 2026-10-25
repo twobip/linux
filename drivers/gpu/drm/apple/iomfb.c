@@ -90,15 +90,23 @@ static inline u64 dcpep_ack(enum dcp_context_id id)
 	return dcpep_msg(id, 0, 0) | IOMFB_MSG_ACK;
 }
 
-/*
- * Adaptive sync through IOMFBParameter 14 black-screens the J616s panel on
- * the desktop 26.6 firmware: the firmware accepts the VRR mode, then no swap
- * completes.  Do not offer it there.
- */
+/* Keep the established fixed-refresh default until panel qualification. */
+static bool t6041_vrr;
+module_param(t6041_vrr, bool, 0444);
+MODULE_PARM_DESC(t6041_vrr, "Enable experimental adaptive sync on the T6041 internal panel");
+
+bool dcp_desktop_vrr_supported(struct apple_dcp *dcp)
+{
+	return t6041_vrr && dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP &&
+		dcp_has_panel(dcp) && dcp->main_display &&
+		!READ_ONCE(dcp->desktop->vrr_failed);
+}
+
 static bool dcp_mode_vrr_supported(struct apple_dcp *dcp,
 				   const struct dcp_display_mode *mode)
 {
-	return dcp->fw_compat != DCP_FIRMWARE_V_26_6_DESKTOP || !mode->vrr;
+	return dcp->fw_compat != DCP_FIRMWARE_V_26_6_DESKTOP ||
+		dcp_desktop_vrr_supported(dcp);
 }
 
 /*
@@ -1950,7 +1958,7 @@ edid_done:
 		if (!dcp_mode_vrr_supported(dcp, &modes[i]))
 			continue;
 		if (modes[i].vrr) {
-			u16 lo = modes[i].min_vrr >> 16;
+			u16 lo = DIV_ROUND_UP(modes[i].min_vrr, 1U << 16);
 			u16 hi = modes[i].max_vrr >> 16;
 
 			if (!min_vfreq || lo < min_vfreq)
@@ -1998,7 +2006,7 @@ static int dcp_desktop_modeset(struct apple_dcp *dcp,
 
 	if (d->trial_modeset_ok) {
 		d->trial_modeset_ok = false;
-		if (d->mode_live && lookup_mode(dcp, &crtc_state->mode, &matched) &&
+		if (!crtc_state->vrr_enabled && d->mode_live && lookup_mode(dcp, &crtc_state->mode, &matched) &&
 		    matched.timing_mode_id == d->trial_timing_mode_id &&
 		    matched.color_mode_id == d->trial_color_mode_id) {
 			dev_dbg(dcp->dev, "keeping the takeover mode " DRM_MODE_FMT "\n",
@@ -2258,7 +2266,9 @@ int dcp_crtc_atomic_modeset(struct drm_crtc *crtc,
 		return 0;
 
 	modeset = drm_atomic_crtc_needs_modeset(crtc_state) ||
-		  !READ_ONCE(dcp->mode_state.valid);
+		  !READ_ONCE(dcp->mode_state.valid) ||
+		  (dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP &&
+		   crtc_state->vrr_enabled != dcp->desktop->vrr_requested);
 
 	if (!modeset)
 		return 0;

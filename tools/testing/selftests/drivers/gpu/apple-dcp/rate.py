@@ -48,6 +48,8 @@ def parser_fixture(root):
     metadata = block(metadata, 'struct dcp_display_metadata {') + ';\n'
     header = (base / 'parser.h').read_text()
     header = header[header.index('struct apple_dcp;'):header.index('int parse(')]
+    refresh = (base / 'dcp-refresh.h').read_text().replace('#include <linux/types.h>', '')
+    header = refresh + '\n' + header
     # Header helpers stay header-like: unused here, as in any includer.
     header = header.replace('static inline ', 'static inline __attribute__((unused)) ')
     edid_header = (root / 'include/drm/drm_edid.h').read_text()
