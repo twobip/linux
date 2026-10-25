@@ -878,8 +878,10 @@ static int parse_mode(struct dcp_parse_ctx *handle,
 	/* External H17P keeps fixed timings without adaptive-sync support. */
 	if (!external_sdr && !vrr_ambiguous)
 		out->vrr = dcp_refresh_range(vert.precise_sync_rate, min_vrr,
-					     max_vrr, internal,
+					     max_vrr, internal && !vrr_seen,
 					     &out->min_vrr, &out->max_vrr);
+	out->needs_timestamps = out->vrr ||
+		(internal && dcp_refresh_is_promotion(vert.precise_sync_rate));
 
 	clock = calculate_clock(&horiz, &vert);
 	if (!clock || clock > INT_MAX)
