@@ -44,7 +44,7 @@ config MUX_ADGS1408
 
 config MUX_APPLE_DPXBAR
 	tristate "Apple Silicon Display Crossbar"
-	depends on ARCH_APPLE
+	depends on ARCH_APPLE || COMPILE_TEST
 	help
 	  Apple Silicon Display Crossbar multiplexer.
 

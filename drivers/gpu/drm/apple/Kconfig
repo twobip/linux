@@ -19,6 +19,7 @@ config DRM_APPLE
 	select VMAP_PFN
 	depends on BACKLIGHT_CLASS_DEVICE
 	select MULTIPLEXER
+	select MUX_APPLE_DPXBAR
 	select DRM_APPLE_FABRIC_CORE
 	help
 	  Say Y if you have an Apple Silicon chipset. This includes the
