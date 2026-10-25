@@ -30,6 +30,7 @@ import rate
 import boot
 import m4
 import display
+import desktop
 
 
 def parking_unit(root):
@@ -53,6 +54,7 @@ def main():
                                        'failed-flip-return', 'live-park'))
     tests = [
         ('display', 'panel-backlight-ramp', display.backlight, ((),), ()),
+        ('display', 'panel-takeover-registration', desktop.brightness_takeover, ((),), ()),
         ('display', 'panel-brightness-commit', display.brightness_commit, ((),), ()),
         ('display', 'panel-brightness-takeover', display.takeover, ((),), ()),
         ('display', 'panel-mode-catalog', display.modes, ((),), ()),
