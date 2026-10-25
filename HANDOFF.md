@@ -1,7 +1,10 @@
 # J616s Type-C DisplayPort work
 
 This branch combines the public T6041 display series with its crossbar and
-power-domain dependencies. The changes keep appledrm independent of optional
+power-domain dependencies. It also stacks the public common thermal-governor
+configuration dependency fix so both universal profiles retain the requested
+governor. That shared configuration still needs its normal review before merge.
+The changes keep appledrm independent of optional
 PHY and crossbar modules and serialize USB3 versus four-lane DP ownership.
 Software checks do not prove board behaviour. No hardware was accessed for
 this work.
