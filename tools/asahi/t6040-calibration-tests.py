@@ -70,14 +70,14 @@ mod g17 {
     pub fn check_property_adapter() {
         use crate::{driver::*, of::Node};
         let fields: &[(&str, &[u32])] = &[
-            ("apple,t6040-handoff-version", &[1]),
+            ("apple,t6040-handoff-version", &[2]),
             ("apple,core-mask", &[0xfffff]),
             ("apple,max-power-mw", &[70000]),
             ("apple,perf-base-pstate", &[1]),
-            ("apple,perf-map-a", &[0,1,2,3,4,5,6,7,8,9,10]),
-            ("apple,perf-map-b", &[0,1,2,3,4,5,6,7,8,9,10]),
-            ("apple,perf-relative-a", &[0,10,20,30,40,50,60,70,80,90,100]),
-            ("apple,perf-relative-b", &[0,0,11,22,33,44,55,66,77,88,100]),
+            ("apple,perf-map-a", &[0,1,2,3,4,5,6,7,8,9,15,0,0,0,0,0]),
+            ("apple,perf-map-b", &[0,1,2,3,4,5,6,7,8,9,15,0,0,0,0,0]),
+            ("apple,perf-relative-a", &[0,10,20,30,40,50,60,70,80,90,100,0,0,0,0,0]),
+            ("apple,perf-relative-b", &[0,0,11,22,33,44,55,66,77,88,100,0,0,0,0,0]),
             ("apple,core-leak-coef", &[0x44480000, 0x44800000]),
             ("apple,sram-leak-coef", &[0x43000000, 0x43000000]),
             ("apple,cs-leak-coef", &[0x43800000]),
@@ -98,8 +98,14 @@ mod g17 {
             let mut short = node.clone(); short.0.get_mut(*key).unwrap().pop();
             assert!(read(short).is_err(), "accepted short {key}");
         }
+        for key in ["apple,perf-map-a", "apple,perf-map-b", "apple,perf-relative-a", "apple,perf-relative-b"] {
+            for index in 11..16 {
+                let mut bad = node.clone(); bad.0.get_mut(key).unwrap()[index] = 1;
+                assert!(read(bad).is_err(), "accepted nonzero tail {key}[{index}]");
+            }
+        }
         for (key, value) in [
-            ("apple,t6040-handoff-version", 2),
+            ("apple,t6040-handoff-version", 1),
             ("apple,core-mask", 0x100000),
             ("apple,max-power-mw", 0),
             ("apple,perf-base-pstate", 0),

@@ -20,8 +20,23 @@ fn words<const N: usize>(node: &of::Node, name: &CStr) -> Result<[u32; N]> {
     values.as_slice().try_into().map_err(|_| EINVAL)
 }
 
-fn map(values: [u32; PERF_STATES]) -> Result<[u8; PERF_STATES]> {
-    if values[0] != 0 || values.iter().any(|&v| v >= 16) || values.windows(2).any(|p| p[0] >= p[1])
+// Raw ADT OPP slots and SGX register slots number 16. The supported firmware consumes
+// the 11 populated selectors; the remaining handoff entries must all be zero.
+const RAW_STATES: usize = 16;
+
+fn active(values: [u32; RAW_STATES]) -> Result<[u32; PERF_STATES]> {
+    if values[PERF_STATES..].iter().any(|&v| v != 0) {
+        return Err(EINVAL);
+    }
+    values[..PERF_STATES].try_into().map_err(|_| EINVAL)
+}
+
+fn map(values: [u32; RAW_STATES]) -> Result<[u8; PERF_STATES]> {
+    let values = active(values)?;
+    if values[0] != 0
+        || values[PERF_STATES - 1] != RAW_STATES as u32 - 1
+        || values.iter().any(|&v| v >= RAW_STATES as u32)
+        || values.windows(2).any(|p| p[0] >= p[1])
     {
         return Err(EINVAL);
     }
@@ -37,7 +52,7 @@ fn relative(values: &[u32; PERF_STATES]) -> bool {
 impl Calibration {
     pub(super) fn read(dev: &AsahiDrmDevice) -> Result<Self> {
         let node = dev.as_ref().as_ref().of_node().ok_or(EIO)?;
-        if node.get_property::<u32>(c_str!("apple,t6040-handoff-version"))? != 1 {
+        if node.get_property::<u32>(c_str!("apple,t6040-handoff-version"))? != 2 {
             return Err(EINVAL);
         }
         let core_mask = node.get_property(c_str!("apple,core-mask"))?;
@@ -53,8 +68,8 @@ impl Calibration {
         let perf = PerfConfig {
             states_a: map(words(&node, c_str!("apple,perf-map-a"))?)?,
             states_b: map(words(&node, c_str!("apple,perf-map-b"))?)?,
-            relative_a: words(&node, c_str!("apple,perf-relative-a"))?,
-            relative_b: words(&node, c_str!("apple,perf-relative-b"))?,
+            relative_a: active(words(&node, c_str!("apple,perf-relative-a"))?)?,
+            relative_b: active(words(&node, c_str!("apple,perf-relative-b"))?)?,
             sram_min_mv: 810,
         };
         if !relative(&perf.relative_a)
@@ -186,9 +201,18 @@ mod tests {
 
     #[test]
     fn maps_refuse_off_repeats_and_out_of_range() {
-        let valid = [0, 1, 2, 3, 4, 6, 8, 10, 12, 14, 15];
+        let valid = [0, 1, 2, 3, 4, 6, 8, 10, 12, 14, 15, 0, 0, 0, 0, 0];
         assert!(map(valid).is_ok());
-        for (index, value) in [(0, 1), (1, 0), (5, 4), (10, 16), (10, u32::MAX)] {
+        for (index, value) in [
+            (0, 1),
+            (1, 0),
+            (5, 4),
+            (10, 16),
+            (10, u32::MAX),
+            (10, 14),
+            (11, 1),
+            (15, 15),
+        ] {
             let mut bad = valid;
             bad[index] = value;
             assert!(map(bad).is_err());
