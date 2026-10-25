@@ -20,7 +20,8 @@ Adaptive sync is experimental and disabled by default. To qualify the internal
 panel, boot with ``appledrm.t6041_vrr=1``. This enables the connector capability
 only for the internal main display and a valid adaptive-sync range. The
 existing internal ProMotion convention supplies 24 Hz to the mode rate when
-the firmware omits both range fields; an explicit partial or invalid range
+the firmware omits both range fields or reports both as zero placeholders;
+a partial, duplicate or invalid range
 leaves the timing usable at fixed refresh.
 
 A rejected adaptive-sync parameter or mode selection gets one retry with

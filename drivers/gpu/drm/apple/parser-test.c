@@ -41,6 +41,7 @@ struct parser_record {
 	s64 first_format;
 	bool bad_score_type;
 	bool vrr;
+	bool vrr_zero;
 };
 
 enum parser_missing {
@@ -150,8 +151,8 @@ static void blob_record(struct parser_blob *blob, const struct parser_record *re
 			   record->second_color_missing, DCP_COLOR_FORMAT_RGB);
 	}
 	if (record->vrr) {
-		blob_int(blob, "MinimumVariableRefreshRate", 48 << 16);
-		blob_int(blob, "MaximumVariableRefreshRate", 120 << 16);
+		blob_int(blob, "MinimumVariableRefreshRate", record->vrr_zero ? 0 : 48 << 16);
+		blob_int(blob, "MaximumVariableRefreshRate", record->vrr_zero ? 0 : 120 << 16);
 	}
 }
 
@@ -439,6 +440,37 @@ static void parser_notch_vrr(struct kunit *test)
 	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, modes);
 	KUNIT_EXPECT_EQ(test, modes[0].min_vrr, 48U << 16);
 	KUNIT_EXPECT_EQ(test, modes[0].max_vrr, 120U << 16);
+	kfree(modes);
+}
+
+static void parser_vrr_empty_range(struct kunit *test)
+{
+	struct parser_record record = valid_record(7, 10);
+	struct dcp_display_mode *modes;
+	struct parser_blob *blob;
+	unsigned int count;
+
+	/* Desktop firmware can publish both fields as zero placeholders. */
+	record.rate = 120 << 16;
+	record.vrr = true;
+	record.vrr_zero = true;
+	blob = make_blob(test, &record, 1);
+	KUNIT_ASSERT_NOT_NULL(test, blob);
+	modes = parse_blob(blob, &count, 0, true);
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, modes);
+	KUNIT_ASSERT_EQ(test, count, 1U);
+	KUNIT_EXPECT_TRUE(test, modes[0].vrr);
+	KUNIT_EXPECT_EQ(test, modes[0].min_vrr, 24U << 16);
+	KUNIT_EXPECT_EQ(test, modes[0].max_vrr, 120U << 16);
+	kfree(modes);
+
+	/* A display without the internal ProMotion policy stays fixed. */
+	modes = parse_blob(blob, &count, 0, false);
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, modes);
+	KUNIT_ASSERT_EQ(test, count, 1U);
+	KUNIT_EXPECT_FALSE(test, modes[0].vrr);
+	KUNIT_EXPECT_EQ(test, modes[0].min_vrr, 0U);
+	KUNIT_EXPECT_EQ(test, modes[0].max_vrr, 0U);
 	kfree(modes);
 }
 
@@ -1264,6 +1296,7 @@ static struct kunit_case parser_cases[] = {
 	KUNIT_CASE(parser_horizontal_rate),
 	KUNIT_CASE(parser_bad_score),
 	KUNIT_CASE(parser_notch_vrr),
+	KUNIT_CASE(parser_vrr_empty_range),
 	KUNIT_CASE(parser_replacement),
 	KUNIT_CASE(parser_held_keeps_edid),
 	KUNIT_CASE(parser_attachment_admission),
