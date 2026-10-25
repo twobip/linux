@@ -109,12 +109,12 @@ static inline bool dcp_bl_seed(struct dcp_backlight_state *state, u32 nits)
 	return true;
 }
 
-/* Do not let userspace save or restore an unmeasured registration default. */
+/* Report a usable target until a hint or completed present gives the level. */
 static inline int dcp_bl_actual(const struct dcp_backlight_state *state)
 {
-	if (!state->ready || !state->level_known)
+	if (!state->ready)
 		return -ENODATA;
-	return state->actual;
+	return state->level_known ? state->actual : state->target;
 }
 
 static inline bool dcp_bl_lit(const struct dcp_backlight_state *state)
@@ -174,7 +174,8 @@ static inline int dcp_bl_request(struct dcp_backlight_state *state, u32 nits,
 		state->target = nits;
 		state->core_blank = core_blank;
 		state->suspended = suspended;
-		if (state->fade && state->level_known && was_lit &&
+		/* With no hint, the reporting target is the first fade's origin. */
+		if (state->fade && (state->level_known || state->preserve_inherited) && was_lit &&
 		    dcp_bl_lit(state) && state->level != nits) {
 			state->fade_from = state->level;
 			state->fading = true;

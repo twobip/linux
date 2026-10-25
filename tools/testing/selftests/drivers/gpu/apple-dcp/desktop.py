@@ -90,7 +90,7 @@ int main(void)
     __typeof__(*d.desktop) saved={0};d.desktop=&saved;
     assert(!dcp_backlight_register(&d));
     assert(registered.props.brightness==300 && registered.props.max_brightness==600);
-    assert(dcp_get_brightness(&registered)==-ENODATA);
+    assert(dcp_get_brightness(&registered)==300);
     assert(!dcp_backlight_controls_device(&registered,NULL));
     /* A save/restore client echoes the exposed value, not a new target. */
     assert(!dcp_set_brightness(&registered));
@@ -99,19 +99,20 @@ int main(void)
     assert(!dcp_set_brightness(&registered));
     registered.props.state=0;assert(!dcp_set_brightness(&registered));
     assert(!d.backlight.state.controlled && !d.backlight.state.dirty);
-    assert(dcp_get_brightness(&registered)==-ENODATA);
+    assert(dcp_get_brightness(&registered)==300);
     /* A different explicit target takes over the unknown inherited level. */
     registered.props.brightness=250;assert(!dcp_set_brightness(&registered));
-    assert(d.backlight.state.controlled && d.backlight.state.dirty && !fades);
+    assert(d.backlight.state.controlled && d.backlight.state.fading && !d.backlight.state.dirty && fades==1);
+    assert(!dcp_bl_fade_step(&d.backlight.state,250,250));
     assert(dcp_backlight_controls_device(&registered,NULL));
     struct dcp_backlight_present present;
     assert(!dcp_bl_prepare(&d.backlight.state,true,&present) && present.nits==250);
-    assert(dcp_get_brightness(&registered)==-ENODATA);
+    assert(dcp_get_brightness(&registered)==250);
     assert(dcp_bl_complete(&d.backlight.state,present.sequence,true));
     assert(dcp_get_brightness(&registered)==250);
     /* Even the former midpoint is an ordinary faded target after takeover. */
     registered.props.brightness=300;assert(!dcp_set_brightness(&registered));
-    assert(d.backlight.state.fading && fades==1 && d.backlight.state.target==300);
+    assert(d.backlight.state.fading && fades==2 && d.backlight.state.target==300);
     /* A real loader hint seeds registration without needing a present. */
     d.brightness.bl_dev=NULL;d.backlight.state=(struct dcp_backlight_state){0};
     inject_hint=true;
