@@ -891,6 +891,13 @@ static struct apple_dcp_afkep *dcp_afkep(struct apple_dcp *dcp, u8 endpoint)
 	}
 }
 
+/* RX and the watchdog may race to finish one present, never both. */
+bool dcp_desktop_present_complete(struct apple_dcp *dcp, u32 id)
+{
+	return id == READ_ONCE(dcp->desktop->present_id) &&
+		xchg(&dcp->desktop->present_pending, false);
+}
+
 #define DCP_SWAP_WATCHDOG_MS		1000
 #define DCP_SWAP_WATCHDOG_RETRAINS	5
 
@@ -909,10 +916,15 @@ VISIBLE_IF_KUNIT void dcp_swap_watchdog(struct work_struct *work)
 		container_of(to_delayed_work(work), struct apple_dcp,
 			     swap_watchdog_wq);
 
-	if (dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP &&
-	    (!READ_ONCE(dcp->desktop->present_pending) ||
-	     time_before(jiffies, dcp->swap_watchdog_deadline)))
-		return;
+	if (dcp->fw_compat == DCP_FIRMWARE_V_26_6_DESKTOP) {
+		if (time_before(jiffies, dcp->swap_watchdog_deadline) ||
+		    !xchg(&dcp->desktop->present_pending, false))
+			return;
+		/* Retain displaced buffers until a later present really completes. */
+		dcp_unarm_retained_framebuffers(dcp, READ_ONCE(dcp->desktop->present_id));
+		dcp_backlight_desktop_finish(dcp, READ_ONCE(dcp->desktop->present_id),
+					     true, false);
+	}
 
 	if (!iomfb_retire_dropped_present_h17p(dcp))
 		return;
@@ -921,8 +933,6 @@ VISIBLE_IF_KUNIT void dcp_swap_watchdog(struct work_struct *work)
 	    READ_ONCE(dcp->vrr_enabled)) {
 		WRITE_ONCE(dcp->desktop->vrr_failed, true);
 		WRITE_ONCE(dcp->vrr_enabled, false);
-		dcp_backlight_desktop_finish(dcp, READ_ONCE(dcp->desktop->present_id),
-					     true, false);
 		dev_warn(dcp->dev, "adaptive swap timed out, restoring fixed refresh\n");
 	}
 	dev_warn(dcp->dev, "swap not completed, retraining the display\n");
