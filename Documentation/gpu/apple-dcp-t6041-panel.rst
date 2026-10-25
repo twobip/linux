@@ -1,3 +1,5 @@
+.. SPDX-License-Identifier: GPL-2.0-only OR MIT
+
 T6041 internal panel
 ===================
 

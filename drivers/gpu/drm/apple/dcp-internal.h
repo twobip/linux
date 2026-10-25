@@ -230,6 +230,8 @@ enum dcp_test_point {
 struct dcp_desktop_state {
 	/* Protected by backlight.lock, independent of framebuffer retirement. */
 	struct dcp_backlight_swap backlight;
+	bool inherited_brightness_valid;
+	u32 inherited_brightness;
 
 	/* Queued swap; too large for the shared swap union. */
 	struct dcp_swap_submit_req_v26_6_desktop swap;
@@ -296,6 +298,7 @@ struct dcpext_scanout;
 struct dcp_hdmi;
 
 bool dcp_desktop_vrr_supported(struct apple_dcp *dcp);
+int dcp_desktop_vrr_check(struct apple_dcp *dcp, struct drm_crtc_state *state);
 
 struct apple_dcp {
 	/* Generation-specific wire/transaction state, sharing the common KMS owner. */
