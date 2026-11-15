@@ -7,6 +7,9 @@
 
 #include <linux/export.h>
 #include <linux/mm.h>
+#ifdef CONFIG_ARM64
+#include <asm/processor.h>	/* arch_set_tpidrro() */
+#endif
 #include <linux/mm_inline.h>
 #include <linux/utsname.h>
 #include <linux/mman.h>
@@ -2933,6 +2936,13 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 #endif
 	case PR_SET_MDWE:
 		error = prctl_set_mdwe(arg2, arg3, arg4, arg5);
+		break;
+	case PR_SET_TPIDRRO:
+#ifdef CONFIG_ARM64
+		error = arch_set_tpidrro(arg2);
+#else
+		error = -EINVAL;
+#endif
 		break;
 	case PR_GET_MDWE:
 		error = prctl_get_mdwe(arg2, arg3, arg4, arg5);

@@ -197,6 +197,13 @@ struct thread_struct {
 	u64			svcr;
 	u64			tpidr2_el0;
 	u64			por_el0;
+	/*
+	 * TPIDRRO_EL0 for this task. EL0 cannot write it, and tls_thread_switch()
+	 * resets it to zero on every switch for 64-bit tasks, so a guest ABI that
+	 * keeps a thread pointer there (Darwin arm64) needs the value carried here
+	 * and restored by the switch.
+	 */
+	u64			tpidrro_el0;
 #ifdef CONFIG_ARM64_GCS
 	unsigned int		gcs_el0_mode;
 	unsigned int		gcs_el0_locked;
@@ -489,6 +496,8 @@ int get_tsc_mode(unsigned long adr);
 int set_tsc_mode(unsigned int val);
 #define GET_TSC_CTL(adr)        get_tsc_mode((adr))
 #define SET_TSC_CTL(val)        set_tsc_mode((val))
+
+int arch_set_tpidrro(unsigned long value);
 
 #endif /* __ASSEMBLER__ */
 #endif /* __ASM_PROCESSOR_H */

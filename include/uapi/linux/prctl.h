@@ -391,6 +391,14 @@ struct prctl_mm_map {
 # define PR_FUTEX_HASH_SET_SLOTS	1
 # define PR_FUTEX_HASH_GET_SLOTS	2
 
+/*
+ * Set the calling thread's TPIDRRO_EL0 (aarch64). EL0 can read that register but
+ * not write it, and the kernel zeroes it on every context switch, so a guest ABI
+ * that expects a thread pointer there (Darwin arm64) needs both halves: this
+ * interface and the switch-time restore.
+ */
+#define PR_SET_TPIDRRO			82
+
 /* RSEQ time slice extensions */
 #define PR_RSEQ_SLICE_EXTENSION			79
 # define PR_RSEQ_SLICE_EXTENSION_GET		1

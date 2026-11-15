@@ -561,11 +561,28 @@ static void tls_thread_switch(struct task_struct *next)
 	if (is_compat_thread(task_thread_info(next)))
 		write_sysreg(next->thread.uw.tp_value, tpidrro_el0);
 	else
-		write_sysreg(0, tpidrro_el0);
+		write_sysreg(next->thread.tpidrro_el0, tpidrro_el0);
 
 	write_sysreg(*task_user_tls(next), tpidr_el0);
 	if (system_supports_tpidr2())
 		write_sysreg_s(next->thread.tpidr2_el0, SYS_TPIDR2_EL0);
+}
+
+/**
+ * arch_set_tpidrro - set the calling thread's TPIDRRO_EL0
+ * @value: value to keep in the register
+ *
+ * EL0 can read TPIDRRO_EL0 but not write it, and the context switch restores it
+ * from the task's stored value, so a userspace program that needs something
+ * there (a guest ABI with a thread pointer in that register) can only get it
+ * through this call. Returns 0.
+ */
+int arch_set_tpidrro(unsigned long value)
+{
+	current->thread.tpidrro_el0 = value;
+	write_sysreg(value, tpidrro_el0);
+	isb();
+	return 0;
 }
 
 /*
